@@ -311,8 +311,9 @@ $('btn-join-room').onclick = () => {
   enterRoom(false);
 };
 
-function enterRoom(asCreator){
-  joinedAt = Date.now();
+function enterRoom(asCreator, retryCount){
+  retryCount = retryCount || 0;
+  joinedAt = joinedAt || Date.now();
   players = {};
   players[myId] = { id:myId, name:myName, x:0, y:0, angle:0, health:100, weapon:'pistol',
     alive:true, color: PLAYER_COLORS[0], joinedAt };
@@ -355,8 +356,15 @@ function enterRoom(asCreator){
       showScreen('screen-waiting');
     } else if(status==='CHANNEL_ERROR' || status==='TIMED_OUT' || status==='CLOSED'){
       clearTimeout(connectTimeout);
-      $('lobby-error').textContent = 'Error de conexión (' + status + '). Revisá tus credenciales de Supabase.';
       console.error('Supabase channel status:', status, err);
+      if(!gameStarted && retryCount < 3){
+        $('lobby-error').textContent = 'Conexión inestable, reintentando… (' + (retryCount+1) + '/3)';
+        try{ supa.removeChannel(channel); }catch(e){}
+        setTimeout(()=> enterRoom(asCreator, retryCount+1), 1200);
+      } else {
+        showScreen('screen-lobby');
+        $('lobby-error').textContent = 'No se pudo conectar (' + status + '). Cerrá otras pestañas del juego que tengas abiertas y probá de nuevo.';
+      }
     }
   });
 }
