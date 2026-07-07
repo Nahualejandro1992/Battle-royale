@@ -171,6 +171,25 @@
 </div>
 
 <script>
+(function(){
+  function showDebugError(msg){
+    let el = document.getElementById('debug-error-banner');
+    if(!el){
+      el = document.createElement('div');
+      el.id='debug-error-banner';
+      el.style.cssText='position:fixed;top:0;left:0;right:0;background:#c4003c;color:#fff;'+
+        'font:12px monospace;padding:calc(env(safe-area-inset-top) + 10px) 10px 10px;'+
+        'z-index:999999;white-space:pre-wrap;max-height:55vh;overflow:auto;border-bottom:3px solid #fff;';
+      document.body.appendChild(el);
+    }
+    el.textContent += msg + '\n\n';
+  }
+  window.addEventListener('error', (e)=> showDebugError('ERROR: '+e.message+' (línea '+e.lineno+')'));
+  window.addEventListener('unhandledrejection', (e)=> showDebugError('PROMISE: '+(e.reason&&e.reason.message||e.reason)));
+  window.__showDebugError = showDebugError;
+})();
+</script>
+<script>
 /* ============ CONFIGURÁ TUS CREDENCIALES DE SUPABASE ACÁ ============ */
 const SUPABASE_URL = "https://dfverebasyqnyouzekik.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRmdmVyZWJhc3lxbnlvdXpla2lrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzNzQyNTksImV4cCI6MjA5ODk1MDI1OX0.JuCTw9p2201S8AA1chMHlMDMEgA2qiIyANvikwv6Z5w";
@@ -186,6 +205,7 @@ const WEAPONS = {
   rifle:   { name:'RIFLE',    dmg:9,  rate:140, range:640, spread:0.06, pellets:1, color:'#ff2079' },
 };
 const PLAYER_COLORS = ['#00f0ff','#ff2079','#ffd23f','#7dff5e'];
+const ZOOM = 1.7;
 
 function uuid(){
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
@@ -267,6 +287,7 @@ function spawnPickups(){
 }
 
 function spawnPoint(index, total){
+  if(!total || total<1) total = 1;
   const angle = (index/total) * Math.PI*2;
   const r = 750;
   return { x: ARENA.w/2 + Math.cos(angle)*r, y: ARENA.h/2 + Math.sin(angle)*r };
@@ -307,7 +328,10 @@ function enterRoom(asCreator){
     renderWaitingRoom(list);
   });
 
-  channel.on('broadcast',{event:'game_start'}, ({payload}) => startGameFromHost(payload));
+  channel.on('broadcast',{event:'game_start'}, ({payload}) => {
+    try{ startGameFromHost(payload); }
+    catch(err){ window.__showDebugError('ERROR AL RECIBIR INICIO: ' + err.message); }
+  });
   channel.on('broadcast',{event:'state'}, ({payload}) => onRemoteState(payload));
   channel.on('broadcast',{event:'shoot'}, ({payload}) => onRemoteShoot(payload));
   channel.on('broadcast',{event:'hit'}, ({payload}) => onHit(payload));
@@ -356,19 +380,23 @@ function renderWaitingRoom(list){
 }
 
 $('btn-start-game').onclick = () => {
-  const state = channel.presenceState();
-  const list = [];
-  Object.values(state).forEach(arr => arr.forEach(p => list.push(p)));
-  list.sort((a,b)=>a.joinedAt-b.joinedAt);
+  try{
+    const state = channel.presenceState();
+    const list = [];
+    Object.values(state).forEach(arr => arr.forEach(p => list.push(p)));
+    list.sort((a,b)=>a.joinedAt-b.joinedAt);
 
-  buildObstacles();
-  spawnPickups();
-  const spawns = {};
-  list.forEach((p,i)=>{ spawns[p.id] = spawnPoint(i, list.length); });
+    buildObstacles();
+    spawnPickups();
+    const spawns = {};
+    list.forEach((p,i)=>{ spawns[p.id] = spawnPoint(i, list.length); });
 
-  const payload = { players: list, spawns, pickups, startedAt: Date.now() };
-  channel.send({ type:'broadcast', event:'game_start', payload });
-  startGameFromHost(payload);
+    const payload = { players: list, spawns, pickups, startedAt: Date.now() };
+    channel.send({ type:'broadcast', event:'game_start', payload });
+    startGameFromHost(payload);
+  } catch(err){
+    window.__showDebugError('ERROR AL EMPEZAR: ' + err.message);
+  }
 };
 
 // ---------- Game start ----------
@@ -378,7 +406,11 @@ function startGameFromHost(payload){
   pickups = payload.pickups.map(p=>({...p}));
   players = {};
   payload.players.forEach((p,i)=>{
-    const sp = payload.spawns[p.id];
+    let sp = payload.spawns[p.id];
+    if(!sp){
+      window.__showDebugError && window.__showDebugError('Falta spawn para jugador '+p.id+' ('+p.name+'), uso posición de respaldo');
+      sp = { x: ARENA.w/2 + (Math.random()-0.5)*400, y: ARENA.h/2 + (Math.random()-0.5)*400 };
+    }
     players[p.id] = {
       id:p.id, name:p.name, x:sp.x, y:sp.y, angle:0, health:100,
       weapon:'pistol', alive:true, color: PLAYER_COLORS[i % PLAYER_COLORS.length]
@@ -672,8 +704,15 @@ function loop(ts){
 
     channel.send({ type:'broadcast', event:'state', payload: snapshotMe() });
 
-    camera.x = me.x - window.innerWidth/2;
-    camera.y = me.y - window.innerHeight/2;
+    camera.x = me.x - (window.innerWidth/ZOOM)/2;
+    camera.y = me.y - (window.innerHeight/ZOOM)/2;
+  } else if(!me){
+    camera.x = zone.cx - (window.innerWidth/ZOOM)/2;
+    camera.y = zone.cy - (window.innerHeight/ZOOM)/2;
+    if(!window.__warnedNoMe){
+      window.__warnedNoMe = true;
+      window.__showDebugError('No se encontró tu jugador (id '+myId+') en la partida. Jugadores recibidos: '+Object.keys(players).join(', '));
+    }
   }
 
   // update bullets
@@ -682,8 +721,15 @@ function loop(ts){
     return b.life>0;
   });
 
-  render(me);
-  updateHud(me);
+  try{
+    if(isNaN(camera.x) || isNaN(camera.y)){
+      throw new Error('Cámara inválida (NaN). me existe: '+(!!me)+', jugadores: '+Object.keys(players).length+', zone: '+JSON.stringify(zone));
+    }
+    render(me);
+    updateHud(me);
+  } catch(err){
+    window.__showDebugError('RENDER ERROR: ' + err.message);
+  }
 
   if(!gameOver) requestAnimationFrame(loop);
 }
@@ -691,12 +737,14 @@ function loop(ts){
 function render(me){
   ctx.clearRect(0,0,window.innerWidth,window.innerHeight);
   ctx.save();
+  ctx.scale(ZOOM, ZOOM);
   ctx.translate(-camera.x, -camera.y);
 
   // arena bg grid
-  ctx.fillStyle = '#0b0e15';
+  ctx.fillStyle = '#151a26';
   ctx.fillRect(0,0,ARENA.w,ARENA.h);
-  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.strokeStyle = 'rgba(120,180,255,0.09)';
+  ctx.lineWidth = 2;
   for(let gx=0; gx<=ARENA.w; gx+=100){ ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,ARENA.h); ctx.stroke(); }
   for(let gy=0; gy<=ARENA.h; gy+=100){ ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(ARENA.w,gy); ctx.stroke(); }
 
