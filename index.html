@@ -595,7 +595,42 @@
   // ============================================================
   function renderPassengerFlow(){
     if(session.activeRideId){ return renderPassengerTracking(); }
+    if(!session.passengerPhone){ return renderPassengerLogin(); }
     renderPassengerForm();
+  }
+
+  function renderPassengerLogin(){
+    stageContent.innerHTML = `
+      <div style="padding:30px 4px 0;">
+        <div style="font-size:22px;font-weight:600;">Entrar como pasajero</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-top:6px;">Con tu teléfono y nombre, para no repetirlo cada vez</div>
+      </div>
+    `;
+    main.innerHTML = `
+      <div class="backLink" id="back">← volver</div>
+      <label>Tu teléfono</label>
+      <input type="tel" id="loginPhone" placeholder="Tu número">
+      <label>Tu nombre</label>
+      <input type="text" id="loginName" placeholder="Nombre y apellido">
+      <button class="btn" id="continueLogin">Continuar</button>
+    `;
+    document.getElementById('back').onclick = () => { session.role = null; render(); };
+    document.getElementById('continueLogin').onclick = async () => {
+      const phone = document.getElementById('loginPhone').value.trim();
+      const name = document.getElementById('loginName').value.trim();
+      if(!phone || !name){ alert('Completá teléfono y nombre.'); return; }
+      if(!supa || SUPABASE_ANON_KEY === 'PONE_ACA_TU_ANON_KEY'){
+        alert('Falta configurar la anon key de Supabase en el código.');
+        return;
+      }
+      const { data, error } = await supa.from('passengers').upsert({ phone, name }, { onConflict:'phone' }).select().single();
+      if(error){ alert('No se pudo guardar tu perfil: ' + error.message); return; }
+
+      session.passengerName = data.name;
+      session.passengerPhone = data.phone;
+      vibrate(20);
+      render();
+    };
   }
 
   function renderPassengerForm(){
@@ -639,9 +674,9 @@
 
       <div class="confirmBox" id="confirmBox">
         <label>Tu nombre</label>
-        <input type="text" id="pName" placeholder="Como te va a reconocer el conductor">
+        <input type="text" id="pName" placeholder="Como te va a reconocer el conductor" value="${escapeHtml(session.passengerName||'')}">
         <label>Tu teléfono</label>
-        <input type="tel" id="pPhone" placeholder="Para coordinar por WhatsApp">
+        <input type="tel" id="pPhone" placeholder="Para coordinar por WhatsApp" value="${escapeHtml(session.passengerPhone||'')}">
 
         <label>¿Cuándo?</label>
         <div class="segmented" id="timingGroup">
@@ -848,6 +883,12 @@
         <div style="font-size:11.5px;color:var(--text-faint);margin-top:8px;">+ cargo de servicio ${money(ride.service_fee || 0)}</div>
       </div>
       ${driverInfo}
+      ${ride.status === 'pendiente' ? `
+        <div class="card" style="border-color:var(--accent-dim);">
+          <div style="font-size:12.5px;color:var(--text-dim);margin-bottom:10px;">🧪 Modo prueba: mientras no tengas otro conductor real probando, podés simular que uno te acepta y viene hasta el destino, para ver si el mapa y los estados andan bien.</div>
+          <button class="btn secondary" id="simulateBtn">Simular conductor de prueba</button>
+        </div>
+      ` : ''}
       ${ride.status === 'completado' ? '<button class="btn" id="newRideBtn">Pedir otro viaje</button>' : ''}
     `;
 
@@ -855,6 +896,13 @@
     if(trackMapEl){
       initStaticMap('trackMap', ride.pickup_lat, ride.pickup_lng, ride.dropoff_lat, ride.dropoff_lng, ride.driver_lat, ride.driver_lng);
     }
+
+    const simBtn = document.getElementById('simulateBtn');
+    if(simBtn) simBtn.onclick = () => {
+      simBtn.disabled = true;
+      simBtn.textContent = 'Simulando...';
+      simulateDriverArrival(ride);
+    };
 
     if(ride.status === 'completado'){
       vibrate([20,40,20,40,60]);
@@ -866,19 +914,135 @@
     }
   }
 
+  // Mueve un punto lat/lng un paso hacia otro (interpolación lineal simple)
+  function lerpPoint(fromLat, fromLng, toLat, toLng, t){
+    return { lat: fromLat + (toLat-fromLat)*t, lng: fromLng + (toLng-fromLng)*t };
+  }
+
+  // MODO PRUEBA: simula un conductor real aceptando y viajando, para probar solo sin una segunda persona
+  async function simulateDriverArrival(ride){
+    if(!supa) return;
+    // Elijo un conductor de prueba: el que ya tenía asignado (pedido directo) o uno disponible al azar
+    let driver = null;
+    if(ride.driver_id){
+      const { data } = await supa.from('drivers').select('*').eq('id', ride.driver_id).maybeSingle();
+      driver = data;
+    }
+    if(!driver){
+      const { data } = await supa.from('drivers').select('*').eq('status','disponible').limit(10);
+      if(data && data.length) driver = data[Math.floor(Math.random()*data.length)];
+    }
+    if(!driver){
+      alert('No hay conductores de prueba disponibles. Corré el seed de 20 choferes en Supabase primero.');
+      return;
+    }
+
+    // Punto de partida simulado: un poco lejos del origen, dentro de CABA
+    const startLat = ride.pickup_lat + (Math.random()-0.5)*0.03;
+    const startLng = ride.pickup_lng + (Math.random()-0.5)*0.03;
+
+    await supa.from('rides').update({
+      status: 'aceptado',
+      driver_id: driver.id,
+      driver_name: driver.name,
+      driver_phone: driver.phone,
+      driver_brand: driver.brand,
+      driver_model: driver.model,
+      driver_plate: driver.plate,
+      driver_color: driver.color,
+      driver_lat: startLat,
+      driver_lng: startLng,
+      updated_at: new Date().toISOString()
+    }).eq('id', ride.id);
+    await supa.from('drivers').update({status:'reservado'}).eq('id', driver.id);
+
+    // Tramo 1: viene desde startLat/Lng hasta el origen (pickup) — simula que te viene a buscar
+    await animateDriverAlong(ride.id, startLat, startLng, ride.pickup_lat, ride.pickup_lng, 12000);
+
+    await supa.from('rides').update({ status:'en_curso', updated_at:new Date().toISOString() }).eq('id', ride.id);
+    await supa.from('drivers').update({status:'ocupado'}).eq('id', driver.id);
+
+    // Tramo 2: del origen al destino — simula el viaje en curso
+    await animateDriverAlong(ride.id, ride.pickup_lat, ride.pickup_lng, ride.dropoff_lat, ride.dropoff_lng, 16000);
+
+    await supa.from('rides').update({ status:'completado', updated_at:new Date().toISOString() }).eq('id', ride.id);
+    await supa.from('drivers').update({status:'disponible'}).eq('id', driver.id);
+  }
+
+  function animateDriverAlong(rideId, fromLat, fromLng, toLat, toLng, durationMs){
+    return new Promise(resolve => {
+      const steps = Math.max(4, Math.round(durationMs / 2000));
+      let step = 0;
+      const interval = setInterval(async () => {
+        step++;
+        const t = step / steps;
+        const p = lerpPoint(fromLat, fromLng, toLat, toLng, Math.min(t,1));
+        await supa.from('rides').update({ driver_lat:p.lat, driver_lng:p.lng }).eq('id', rideId);
+        if(step >= steps){
+          clearInterval(interval);
+          resolve();
+        }
+      }, durationMs/steps);
+    });
+  }
+
   // ============================================================
   // FLUJO CONDUCTOR
   // ============================================================
   function renderDriverFlow(){
-    if(!session.driverId){ return renderDriverRegister(); }
+    if(!session.driverId){ return renderDriverLogin(); }
     renderDriverDashboard();
   }
 
-  function renderDriverRegister(){
+  function renderDriverLogin(){
+    stageContent.innerHTML = `
+      <div style="padding:30px 4px 0;">
+        <div style="font-size:22px;font-weight:600;">Entrar como conductor</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-top:6px;">Con tu teléfono, si ya tenés perfil lo encontramos</div>
+      </div>
+    `;
+    main.innerHTML = `
+      <div class="backLink" id="back">← volver</div>
+      <label>Tu teléfono</label>
+      <input type="tel" id="loginPhone" placeholder="Ej: 11-5501-0001">
+      <button class="btn" id="continueLogin">Continuar</button>
+    `;
+    document.getElementById('back').onclick = () => { session.role = null; render(); };
+    document.getElementById('continueLogin').onclick = async () => {
+      const phone = document.getElementById('loginPhone').value.trim();
+      if(!phone){ alert('Ingresá tu teléfono.'); return; }
+      if(!supa || SUPABASE_ANON_KEY === 'PONE_ACA_TU_ANON_KEY'){
+        alert('Falta configurar la anon key de Supabase en el código.');
+        return;
+      }
+      const { data, error } = await supa.from('drivers').select('*').eq('phone', phone).maybeSingle();
+      if(error){ alert('Error buscando tu perfil: ' + error.message); return; }
+
+      if(data){
+        session.driverId = data.id;
+        session.driverName = data.name;
+        session.driverPhone = data.phone;
+        session.driverBrand = data.brand;
+        session.driverModel = data.model;
+        session.driverColor = data.color;
+        session.driverPlate = data.plate;
+        session.driverStatus = data.status === 'offline' ? 'disponible' : data.status;
+        if(data.status === 'offline'){
+          await supa.from('drivers').update({status:'disponible'}).eq('id', data.id);
+        }
+        vibrate(20);
+        render();
+      } else {
+        renderDriverRegister(phone);
+      }
+    };
+  }
+
+  function renderDriverRegister(prefillPhone){
     stageContent.innerHTML = `
       <div style="padding:30px 4px 0;">
         <div style="font-size:22px;font-weight:600;">Sumate como conductor</div>
-        <div style="font-size:13px;color:var(--text-dim);margin-top:6px;">Un registro rápido y ya podés empezar</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-top:6px;">No encontramos ese teléfono, completá tu perfil</div>
       </div>
     `;
     main.innerHTML = `
@@ -886,7 +1050,7 @@
       <label>Tu nombre</label>
       <input type="text" id="dName" placeholder="Nombre y apellido">
       <label>Tu teléfono</label>
-      <input type="tel" id="dPhone" placeholder="Para que te contacten">
+      <input type="tel" id="dPhone" placeholder="Para que te contacten" value="${escapeHtml(prefillPhone||'')}">
       <label>Marca</label>
       <input type="text" id="dBrand" placeholder="Ej: Volkswagen">
       <label>Modelo</label>
@@ -919,14 +1083,14 @@
       const model = document.getElementById('dModel').value.trim();
       const color = document.getElementById('dColor').value;
       const plate = document.getElementById('dPlate').value.trim().toUpperCase();
-      if(!name || !brand || !plate){ alert('Completá al menos nombre, marca y patente.'); return; }
+      if(!name || !phone || !brand || !plate){ alert('Completá al menos nombre, teléfono, marca y patente.'); return; }
       if(!supa || SUPABASE_ANON_KEY === 'PONE_ACA_TU_ANON_KEY'){
         alert('Falta configurar la anon key de Supabase en el código.');
         return;
       }
-      const { data, error } = await supa.from('drivers').insert({
+      const { data, error } = await supa.from('drivers').upsert({
         name, phone, brand, model, color, plate, status: 'disponible'
-      }).select().single();
+      }, { onConflict: 'phone' }).select().single();
       if(error){ alert('No se pudo registrar: ' + error.message); return; }
 
       session.driverId = data.id;
