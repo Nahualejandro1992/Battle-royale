@@ -320,9 +320,30 @@
   // Se puede ajustar acá (monto fijo simple para esta prueba).
   const PLATFORM_SERVICE_FEE = 300;
 
-  // Tarifa estimada: bajada de bandera + precio por km. Ajustable acá.
-  const FARE_BASE = 800;
-  const FARE_PER_KM = 280;
+  // Tarifa fijada en USD (así no se desactualiza con la inflación) y convertida
+  // a pesos con la cotización del dólar blue de hoy. Si no se puede consultar,
+  // cae a una cotización de referencia fija.
+  const FARE_BASE_USD = 1.2;
+  const FARE_PER_KM_USD = 0.35;
+  const FALLBACK_USD_RATE = 1200; // referencia si falla la consulta en vivo
+
+  let currentUsdRate = null;
+  let currentUsdRateLabel = '';
+
+  async function fetchDolarRate(){
+    try{
+      const res = await fetch('https://dolarapi.com/v1/dolares/blue');
+      const data = await res.json();
+      if(data && data.venta){
+        currentUsdRate = data.venta;
+        currentUsdRateLabel = `Dólar blue hoy: $${data.venta}`;
+        return currentUsdRate;
+      }
+    } catch(e){ console.warn('No se pudo obtener cotización, uso valor de referencia:', e); }
+    currentUsdRate = FALLBACK_USD_RATE;
+    currentUsdRateLabel = `Cotización de referencia: $${FALLBACK_USD_RATE} (sin conexión al dólar en vivo)`;
+    return currentUsdRate;
+  }
 
   function distanceKm(lat1, lng1, lat2, lng2){
     const R = 6371;
@@ -333,7 +354,9 @@
   }
 
   function estimateFare(km){
-    return Math.round((FARE_BASE + km*FARE_PER_KM)/50)*50;
+    const rate = currentUsdRate || FALLBACK_USD_RATE;
+    const usd = FARE_BASE_USD + km*FARE_PER_KM_USD;
+    return Math.round((usd * rate)/50)*50;
   }
 
   // Ruta real por calles (motor de ruteo público OSRM, gratis, sin key).
@@ -840,19 +863,22 @@
 
       <div class="mapWrap">
         <div class="mapPicker" id="pickerMap"></div>
-        <div class="mapHint" id="mapHint">Buscando tu ubicación...</div>
         <div class="mapIconBtn" id="locateBtn" title="Mi ubicación">📍</div>
         <div class="mapIconBtn" id="mapResetBtn" title="Reiniciar puntos" style="right:56px;">↺</div>
       </div>
+      <div id="mapStatusText" style="font-size:11.5px;color:var(--text-faint);margin:6px 2px 0;min-height:16px;"></div>
 
       <div id="routeStripWrap"></div>
       <div id="priceCardWrap"></div>
 
       <div class="confirmBox" id="confirmBox">
-        <label>Tu nombre</label>
-        <input type="text" id="pName" placeholder="Como te va a reconocer el conductor" value="${escapeHtml(session.passengerName||'')}">
-        <label>Tu teléfono</label>
-        <input type="tel" id="pPhone" placeholder="Para coordinar por WhatsApp" value="${escapeHtml(session.passengerPhone||'')}">
+        <div class="card" style="display:flex;align-items:center;gap:12px;">
+          ${avatarHtml(session.passengerName, null)}
+          <div>
+            <div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;font-weight:700;letter-spacing:.3px;">Pedís como</div>
+            <div style="font-size:15px;font-weight:600;">${escapeHtml(session.passengerName||'')}</div>
+          </div>
+        </div>
 
         <label>¿Cuándo?</label>
         <div class="segmented" id="timingGroup">
@@ -916,12 +942,15 @@
         session._estimatedFare = fare;
         session._estimatedKm = km;
         priceWrap.innerHTML = `
-          <div class="card" style="display:flex;justify-content:space-between;align-items:center;border-color:var(--accent-dim);">
-            <div>
-              <div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;font-weight:700;letter-spacing:.3px;">Precio estimado</div>
-              <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">${km.toFixed(1)} km ${usingReal ? 'por calles' : '(calculando ruta real...)'}${routeMinutes ? ' · ~'+Math.round(routeMinutes)+' min' : ''}</div>
+          <div class="card" style="border-color:var(--accent-dim);">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;font-weight:700;letter-spacing:.3px;">Precio estimado</div>
+                <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">${km.toFixed(1)} km ${usingReal ? 'por calles' : '(calculando ruta real...)'}${routeMinutes ? ' · ~'+Math.round(routeMinutes)+' min' : ''}</div>
+              </div>
+              <div style="font-size:24px;font-weight:700;">${money(fare)}</div>
             </div>
-            <div style="font-size:24px;font-weight:700;">${money(fare)}</div>
+            <div style="font-size:10.5px;color:var(--text-faint);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">${currentUsdRateLabel || 'Consultando cotización...'}</div>
           </div>
         `;
       } else {
@@ -931,42 +960,46 @@
     }
 
     const picker = initPickerMap('pickerMap', (evt) => {
-      const hint = document.getElementById('mapHint');
-      if(evt.stage === 'origin-set') hint.textContent = 'Ahora tocá el mapa o escribí el destino';
-      if(evt.stage === 'origin-address'){
-        originData = { address: evt.address, lat: evt.lat, lng: evt.lng };
-        document.getElementById('searchOrigin').value = evt.address;
-        if(evt.isGPS) hint.textContent = 'Esa es tu ubicación · marcá el destino';
-        refreshRouteStripUI();
-      }
-      if(evt.stage === 'dest-set') hint.textContent = 'Calculando la ruta real...';
-      if(evt.stage === 'dest-address'){
-        destData = { address: evt.address, lat: evt.lat, lng: evt.lng };
-        document.getElementById('searchDest').value = evt.address;
-        refreshRouteStripUI();
-      }
-      if(evt.stage === 'route-real'){ routeKm = evt.km; routeMinutes = evt.minutes; hint.textContent = 'Listo, confirmá abajo'; refreshRouteStripUI(); }
-      if(evt.stage === 'route-fallback'){ hint.textContent = 'Listo, confirmá abajo (ruta aproximada)'; }
-      if(evt.stage === 'out-of-caba') hint.textContent = 'Estás fuera de CABA, marcá tu origen manualmente';
-      if(evt.stage === 'reset'){
-        originData = null; destData = null; routeKm = null; routeMinutes = null;
-        document.getElementById('searchOrigin').value = '';
-        document.getElementById('searchDest').value = '';
-        hint.textContent = 'Tocá el mapa para marcar dónde te recogemos';
-        refreshRouteStripUI();
-      }
+      try{
+        const hint = document.getElementById('mapStatusText');
+        const searchOriginEl = document.getElementById('searchOrigin');
+        const searchDestEl = document.getElementById('searchDest');
+        if(evt.stage === 'origin-set' && hint) hint.textContent = 'Ahora tocá el mapa o escribí el destino';
+        if(evt.stage === 'origin-address'){
+          originData = { address: evt.address, lat: evt.lat, lng: evt.lng };
+          if(searchOriginEl) searchOriginEl.value = evt.address;
+          if(evt.isGPS && hint) hint.textContent = 'Esa es tu ubicación · marcá el destino';
+          refreshRouteStripUI();
+        }
+        if(evt.stage === 'dest-set' && hint) hint.textContent = 'Calculando la ruta real...';
+        if(evt.stage === 'dest-address'){
+          destData = { address: evt.address, lat: evt.lat, lng: evt.lng };
+          if(searchDestEl) searchDestEl.value = evt.address;
+          refreshRouteStripUI();
+        }
+        if(evt.stage === 'route-real'){ routeKm = evt.km; routeMinutes = evt.minutes; if(hint) hint.textContent = 'Listo, confirmá abajo'; refreshRouteStripUI(); }
+        if(evt.stage === 'route-fallback' && hint) hint.textContent = 'Listo, confirmá abajo (ruta aproximada)';
+        if(evt.stage === 'out-of-caba' && hint) hint.textContent = 'Estás fuera de CABA, marcá tu origen manualmente';
+        if(evt.stage === 'reset'){
+          originData = null; destData = null; routeKm = null; routeMinutes = null;
+          if(searchOriginEl) searchOriginEl.value = '';
+          if(searchDestEl) searchDestEl.value = '';
+          if(hint) hint.textContent = '';
+          refreshRouteStripUI();
+        }
+      } catch(e){ console.warn('Error actualizando el mapa (no debería frenar el resto):', e); }
     });
     picker.invalidate();
 
     document.getElementById('mapResetBtn').onclick = () => picker.reset();
     document.getElementById('locateBtn').onclick = () => {
-      document.getElementById('mapHint').textContent = 'Buscando tu ubicación...';
+      document.getElementById('mapStatusText').textContent = 'Buscando tu ubicación...';
       picker.locateMe();
     };
 
     async function searchAndSet(query, isOrigin){
       if(!query.trim()) return;
-      const hint = document.getElementById('mapHint');
+      const hint = document.getElementById('mapStatusText');
       hint.textContent = 'Buscando "' + query + '"...';
       const result = await forwardGeocode(query);
       if(!result){ hint.textContent = 'No encontré esa dirección en CABA, probá con otro texto'; return; }
@@ -987,13 +1020,13 @@
     });
 
     document.getElementById('submitRide').onclick = async () => {
-      const name = document.getElementById('pName').value.trim();
-      const phone = document.getElementById('pPhone').value.trim();
+      const name = session.passengerName;
+      const phone = session.passengerPhone;
       const deposit = parseFloat(document.getElementById('pDeposit').value) || 0;
       const scheduledVal = document.getElementById('pScheduled').value;
 
       if(!name || !originData || !destData){
-        alert('Completá tu nombre y marcá origen y destino en el mapa.');
+        alert('Marcá origen y destino en el mapa (o buscalos escribiendo la dirección).');
         return;
       }
       if(timing === 'programado' && !scheduledVal){
@@ -1004,9 +1037,6 @@
         alert('Falta configurar la anon key de Supabase en el código.');
         return;
       }
-
-      session.passengerName = name;
-      session.passengerPhone = phone;
 
       const { data, error } = await supa.from('rides').insert({
         passenger_name: name,
@@ -1032,11 +1062,21 @@
     };
   }
 
+  let trackMap = null, trackMarkers = { origin:null, dest:null, driver:null }, trackRouteDrawn = false;
+
   function renderPassengerTracking(){
+    trackMap = null; trackMarkers = { origin:null, dest:null, driver:null }; trackRouteDrawn = false;
     stageContent.innerHTML = `<div id="statusHeroWrap"></div>`;
     main.innerHTML = `
       <div class="backLink" id="cancelBack">← cancelar y volver</div>
-      <div id="rideStatusCard"><div class="empty">Cargando estado del viaje...</div></div>
+      <div id="statusPillArea"></div>
+      <div class="card">
+        <div class="mapWrap"><div class="mapStatic" id="trackMap"></div></div>
+        <div id="routeStripArea"></div>
+        <div id="feeArea"></div>
+      </div>
+      <div id="driverInfoArea"></div>
+      <div id="extraArea"></div>
     `;
     document.getElementById('cancelBack').onclick = async () => {
       if(session.activeRideId && supa){
@@ -1050,11 +1090,50 @@
     loadRideOnce(session.activeRideId, renderRideStatusCard);
   }
 
+  function updateTrackMap(ride){
+    const container = document.getElementById('trackMap');
+    if(!container) return;
+
+    // Primera vez: creo el mapa, marco origen/destino y trazo la ruta real UNA sola vez
+    if(!trackMap && ride.pickup_lat && ride.pickup_lng){
+      trackMap = makeBaseMap('trackMap', false);
+      trackMarkers.origin = L.marker([ride.pickup_lat, ride.pickup_lng], {icon:pinIcon(false)}).addTo(trackMap);
+      if(ride.dropoff_lat && ride.dropoff_lng){
+        trackMarkers.dest = L.marker([ride.dropoff_lat, ride.dropoff_lng], {icon:pinIcon(true)}).addTo(trackMap);
+        const straight = L.polyline([[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]], { color:'#4b7bff', weight:2, dashArray:'2 8', opacity:.6 }).addTo(trackMap);
+        trackMap.fitBounds([[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]], {padding:[30,30]});
+        fetchRealRoute(ride.pickup_lat, ride.pickup_lng, ride.dropoff_lat, ride.dropoff_lng).then(route => {
+          if(route && trackMap){
+            trackMap.removeLayer(straight);
+            L.polyline(route.coords, { color:'#4b7bff', weight:4, opacity:.85 }).addTo(trackMap);
+          }
+        });
+      } else {
+        trackMap.setView([ride.pickup_lat, ride.pickup_lng], 14);
+      }
+      setTimeout(()=> trackMap && trackMap.invalidateSize(), 80);
+    }
+
+    // El auto: se crea una vez y de ahí en más solo se MUEVE, nunca se recrea el mapa
+    if(trackMap && ride.driver_lat && ride.driver_lng){
+      if(!trackMarkers.driver){
+        trackMarkers.driver = L.marker([ride.driver_lat, ride.driver_lng], {icon:carIcon()}).addTo(trackMap);
+      } else {
+        trackMarkers.driver.setLatLng([ride.driver_lat, ride.driver_lng]);
+      }
+    }
+  }
+
   function renderRideStatusCard(ride){
     if(!ride) return;
-    const card = document.getElementById('rideStatusCard');
     const heroWrap = document.getElementById('statusHeroWrap');
-    if(!card) return;
+
+    const statusPillArea = document.getElementById('statusPillArea');
+    const routeStripArea = document.getElementById('routeStripArea');
+    const feeArea = document.getElementById('feeArea');
+    const driverInfoArea = document.getElementById('driverInfoArea');
+    const extraArea = document.getElementById('extraArea');
+    if(!statusPillArea) return;
 
     const statusMeta = {
       pendiente: { title:'Buscando conductor', sub:'Puede tardar unos minutos', pill:'Buscando' },
@@ -1064,7 +1143,6 @@
       cancelado: { title:'Viaje cancelado', sub:'', pill:'Cancelado' }
     }[ride.status] || { title:ride.status, sub:'', pill:ride.status };
 
-    const isDone = ride.status === 'completado' || ride.status === 'aceptado' || ride.status === 'en_curso';
     if(heroWrap){
       heroWrap.innerHTML = `
         <div class="statusHero">
@@ -1078,9 +1156,24 @@
       `;
     }
 
-    let driverInfo = '';
+    statusPillArea.innerHTML = `
+      <span class="statusPill ${ride.status}">${ride.status === 'pendiente' ? '<span class="dotBlink"></span>' : ''}${statusMeta.pill}</span>
+      ${ride.scheduled_at ? `<span class="statusPill aceptado" style="margin-left:6px;">🗓 ${new Date(ride.scheduled_at).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>` : ''}
+    `;
+
+    routeStripArea.innerHTML = routeStrip(ride.pickup, ride.dropoff);
+
+    feeArea.innerHTML = `
+      <div class="goldBadge">💰 Seña ${money(ride.deposit_amount)} · ${ride.deposit_method}</div>
+      <div style="font-size:11.5px;color:var(--text-faint);margin-top:8px;">+ cargo de servicio ${money(ride.service_fee || 0)}</div>
+      ${ride.estimated_fare ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);"><span style="font-size:12.5px;color:var(--text-dim);">Precio estimado del viaje</span><span style="font-size:17px;font-weight:700;">${money(ride.estimated_fare)}</span></div>` : ''}
+    `;
+
+    // El mapa se actualiza solo (el auto se mueve), nunca se recrea de cero
+    updateTrackMap(ride);
+
     if(ride.status !== 'pendiente' && ride.driver_name){
-      driverInfo = `
+      driverInfoArea.innerHTML = `
         <div class="card">
           <div class="who">
             ${avatarHtml(ride.driver_name, ride.driver_photo_url)}
@@ -1097,19 +1190,11 @@
           ${ride.driver_phone ? `<a href="tel:${escapeHtml(ride.driver_phone)}" class="btn secondary" style="text-decoration:none;">Llamar al conductor</a>` : ''}
         </div>
       `;
+    } else {
+      driverInfoArea.innerHTML = '';
     }
 
-    card.innerHTML = `
-      <span class="statusPill ${ride.status}">${ride.status === 'pendiente' ? '<span class="dotBlink"></span>' : ''}${statusMeta.pill}</span>
-      ${ride.scheduled_at ? `<span class="statusPill aceptado" style="margin-left:6px;">🗓 ${new Date(ride.scheduled_at).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>` : ''}
-      <div class="card">
-        <div class="mapWrap"><div class="mapStatic" id="trackMap"></div></div>
-        ${routeStrip(ride.pickup, ride.dropoff)}
-        <div class="goldBadge">💰 Seña ${money(ride.deposit_amount)} · ${ride.deposit_method}</div>
-        <div style="font-size:11.5px;color:var(--text-faint);margin-top:8px;">+ cargo de servicio ${money(ride.service_fee || 0)}</div>
-        ${ride.estimated_fare ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);"><span style="font-size:12.5px;color:var(--text-dim);">Precio estimado del viaje</span><span style="font-size:17px;font-weight:700;">${money(ride.estimated_fare)}</span></div>` : ''}
-      </div>
-      ${driverInfo}
+    extraArea.innerHTML = `
       ${ride.status === 'pendiente' ? `
         <div class="card" style="border-color:var(--accent-dim);">
           <div style="font-size:12.5px;color:var(--text-dim);margin-bottom:10px;">🧪 Modo prueba: mientras no tengas otro conductor real probando, podés simular que uno te acepta y viene hasta el destino, para ver si el mapa y los estados andan bien.</div>
@@ -1118,11 +1203,6 @@
       ` : ''}
       ${ride.status === 'completado' ? renderRatingBlock(ride) : ''}
     `;
-
-    const trackMapEl = document.getElementById('trackMap');
-    if(trackMapEl){
-      initStaticMap('trackMap', ride.pickup_lat, ride.pickup_lng, ride.dropoff_lat, ride.dropoff_lng, ride.driver_lat, ride.driver_lng);
-    }
 
     const simBtn = document.getElementById('simulateBtn');
     if(simBtn) simBtn.onclick = () => {
@@ -1732,6 +1812,7 @@
   }
 
   async function boot(){
+    fetchDolarRate(); // no bloquea el arranque, se actualiza en segundo plano
     const remembered = supa ? getRememberedAccount() : null;
     if(remembered && remembered.role === 'conductor'){
       const { data } = await supa.from('drivers').select('*').eq('phone', remembered.phone).maybeSingle();
