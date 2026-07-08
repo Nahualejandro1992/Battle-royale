@@ -208,7 +208,7 @@
   /* ===== MAPA ===== */
   .mapWrap{border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--border);position:relative;margin-bottom:4px;background:var(--surface-2);}
   .mapPicker{width:100%;height:340px;}
-  .mapStatic{width:100%;height:190px;}
+  .mapStatic{width:100%;height:300px;}
   .mapHint{position:absolute;top:10px;left:10px;right:10px;z-index:400;background:rgba(12,12,14,.82);backdrop-filter:blur(4px);color:var(--text);font-size:12px;font-weight:600;padding:9px 13px;border-radius:20px;text-align:center;pointer-events:none;}
   .leaflet-control-attribution{background:rgba(12,12,14,.7) !important;color:var(--text-faint) !important;font-size:9px !important;}
   .leaflet-control-attribution a{color:var(--text-dim) !important;}
@@ -237,6 +237,13 @@
   .photoPickBtn{width:auto;flex:1;text-align:center;margin:0;padding:12px;}
   .avatarPhoto{padding:0;overflow:hidden;}
   .avatarPhoto img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+
+  /* ===== AVISO URGENTE (pedido privado) ===== */
+  .urgentOverlay{position:fixed;inset:0;background:rgba(8,10,16,.92);backdrop-filter:blur(6px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .2s ease both;}
+  .urgentCard{background:var(--surface);border:2px solid var(--gold);border-radius:var(--radius-lg);padding:26px 22px;max-width:400px;width:100%;text-align:center;box-shadow:0 0 40px rgba(215,181,109,.25);}
+  .urgentBadge{display:inline-block;background:var(--gold-dim);color:var(--gold);font-size:11.5px;font-weight:800;letter-spacing:.5px;padding:6px 14px;border-radius:20px;margin-bottom:10px;}
+  .urgentTimer{font-size:38px;font-weight:800;color:var(--gold);font-family:'Space Grotesk';margin-bottom:14px;}
+  .urgentName{font-size:16px;font-weight:600;margin:8px 0 14px;}
 
   /* ===== ESTRELLAS DE CALIFICACIÓN ===== */
   .starRow{display:flex;justify-content:center;gap:8px;}
@@ -319,6 +326,7 @@
   // Cargo de servicio de la plataforma: aparte de la seña, va para el mantenimiento de la app.
   // Se puede ajustar acá (monto fijo simple para esta prueba).
   const PLATFORM_SERVICE_FEE = 300;
+  const VIP_SURCHARGE_MULTIPLIER = 1.25; // pedido privado a un conductor elegido: 25% más
 
   // Tarifa fijada en USD (así no se desactualiza con la inflación) y convertida
   // a pesos con la cotización del dólar blue de hoy. Si no se puede consultar,
@@ -422,6 +430,18 @@
       return `<div class="avatar avatarPhoto" style="${extraStyle||''}"><img src="${photoUrl}" alt=""></div>`;
     }
     return `<div class="avatar" style="${extraStyle||''}">${initials(name)}</div>`;
+  }
+
+  async function getDriverRatingSummary(driverId){
+    if(!supa) return null;
+    const { data } = await supa.from('rides').select('rating').eq('driver_id', driverId).not('rating','is',null);
+    if(!data || data.length === 0) return null;
+    const avg = data.reduce((s,r)=>s+r.rating,0) / data.length;
+    return { avg, count: data.length };
+  }
+
+  function ratingBadgeHtml(avg, count){
+    return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--gold);font-weight:600;">★ ${avg.toFixed(1)} <span style="color:var(--text-faint);font-weight:400;">(${count})</span></span>`;
   }
 
   const COLOR_HEX = { 'Blanco':'#f2f2ee','Negro':'#1a1a1a','Gris':'#8a8d94','Plateado':'#c7cad1','Rojo':'#e2495a','Azul':'#4b7bff','Otro':'#d7b56d' };
@@ -746,6 +766,7 @@
         ${avatarHtml(d.name, d.photo_url)}
         <div class="driverListInfo">
           <div class="driverListName">${escapeHtml(d.name)}</div>
+          <div id="rating-${d.id}" style="font-size:12px;color:var(--text-faint);margin-top:2px;">···</div>
           <span class="statusPill ${d.status}" style="margin:6px 0;"><span class="ledDot ${d.status}"></span>${statusLabel[d.status]||d.status}</span>
           <div class="carMeta">
             ${colorDot(d.color)}
@@ -759,6 +780,14 @@
         </div>
       </div>
     `).join('');
+
+    sorted.forEach(d => {
+      getDriverRatingSummary(d.id).then(summary => {
+        const el2 = document.getElementById('rating-'+d.id);
+        if(!el2) return;
+        el2.innerHTML = summary ? ratingBadgeHtml(summary.avg, summary.count) : 'Sin calificaciones aún';
+      });
+    });
 
     el.querySelectorAll('button[data-pick]').forEach(btn => {
       btn.onclick = () => {
@@ -938,18 +967,21 @@
         confirmBox.classList.add('show');
         const usingReal = routeKm !== null;
         const km = usingReal ? routeKm : distanceKm(originData.lat, originData.lng, destData.lat, destData.lng);
-        const fare = estimateFare(km);
+        let fare = estimateFare(km);
+        const isPrivate = !!session.targetDriver;
+        if(isPrivate) fare = Math.round(fare * VIP_SURCHARGE_MULTIPLIER / 50)*50;
         session._estimatedFare = fare;
         session._estimatedKm = km;
         priceWrap.innerHTML = `
           <div class="card" style="border-color:var(--accent-dim);">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div>
-                <div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;font-weight:700;letter-spacing:.3px;">Precio estimado</div>
+                <div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;font-weight:700;letter-spacing:.3px;">Precio estimado${isPrivate ? ' · Privado 🌟' : ''}</div>
                 <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">${km.toFixed(1)} km ${usingReal ? 'por calles' : '(calculando ruta real...)'}${routeMinutes ? ' · ~'+Math.round(routeMinutes)+' min' : ''}</div>
               </div>
               <div style="font-size:24px;font-weight:700;">${money(fare)}</div>
             </div>
+            ${isPrivate ? `<div style="font-size:10.5px;color:var(--gold);margin-top:8px;">Incluye recargo por pedido privado a conductor elegido (+25%)</div>` : ''}
             <div style="font-size:10.5px;color:var(--text-faint);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">${currentUsdRateLabel || 'Consultando cotización...'}</div>
           </div>
         `;
@@ -1051,6 +1083,7 @@
         distance_km: session._estimatedKm || null,
         scheduled_at: timing === 'programado' ? new Date(scheduledVal).toISOString() : null,
         driver_id: session.targetDriver ? session.targetDriver.id : null,
+        is_private: !!session.targetDriver,
         status: 'pendiente'
       }).select().single();
 
@@ -1118,6 +1151,8 @@
     if(trackMap && ride.driver_lat && ride.driver_lng){
       if(!trackMarkers.driver){
         trackMarkers.driver = L.marker([ride.driver_lat, ride.driver_lng], {icon:carIcon()}).addTo(trackMap);
+        const el = trackMarkers.driver.getElement();
+        if(el) el.style.transition = 'transform 1.1s linear';
       } else {
         trackMarkers.driver.setLatLng([ride.driver_lat, ride.driver_lng]);
       }
@@ -1179,6 +1214,7 @@
             ${avatarHtml(ride.driver_name, ride.driver_photo_url)}
             <div>
               <div class="whoName">${escapeHtml(ride.driver_name)}</div>
+              <div id="driverRatingArea" style="margin:2px 0;font-size:12px;color:var(--text-faint);">cargando estrellas...</div>
               <div class="carMeta">
                 ${colorDot(ride.driver_color)}
                 <span class="carMetaText">${escapeHtml(ride.driver_brand||'')} ${escapeHtml(ride.driver_model||'')}</span>
@@ -1190,6 +1226,13 @@
           ${ride.driver_phone ? `<a href="tel:${escapeHtml(ride.driver_phone)}" class="btn secondary" style="text-decoration:none;">Llamar al conductor</a>` : ''}
         </div>
       `;
+      if(ride.driver_id){
+        getDriverRatingSummary(ride.driver_id).then(summary => {
+          const el = document.getElementById('driverRatingArea');
+          if(!el) return;
+          el.innerHTML = summary ? ratingBadgeHtml(summary.avg, summary.count) : 'Todavía sin calificaciones';
+        });
+      }
     } else {
       driverInfoArea.innerHTML = '';
     }
@@ -1216,21 +1259,52 @@
       const btn = document.getElementById('newRideBtn');
       if(btn) btn.onclick = () => { unsubscribeRide(); session.activeRideId = null; render(); };
 
+      let selectedPayment = ride.final_payment_method || null;
+      let selectedStarsGlobal = 0;
+
+      function refreshButtonsEnabled(){
+        const rateBtn = document.getElementById('submitRating');
+        const payBtn = document.getElementById('confirmPaymentOnly');
+        if(rateBtn) rateBtn.disabled = !(selectedStarsGlobal >= 1 && selectedPayment);
+        if(payBtn) payBtn.disabled = !selectedPayment;
+      }
+
+      const paymentGroup = document.getElementById('finalPaymentGroup');
+      if(paymentGroup){
+        paymentGroup.querySelectorAll('.segOpt').forEach(el => {
+          el.onclick = () => {
+            paymentGroup.querySelectorAll('.segOpt').forEach(o=>o.classList.remove('active'));
+            el.classList.add('active');
+            selectedPayment = el.dataset.val;
+            refreshButtonsEnabled();
+          };
+        });
+      }
+
       if(!ride.rating){
-        let selectedStars = 0;
         const stars = document.querySelectorAll('.starBtn');
         stars.forEach(s => {
           s.onclick = () => {
-            selectedStars = parseInt(s.dataset.star);
-            stars.forEach(x => x.classList.toggle('filled', parseInt(x.dataset.star) <= selectedStars));
-            document.getElementById('submitRating').disabled = false;
+            selectedStarsGlobal = parseInt(s.dataset.star);
+            stars.forEach(x => x.classList.toggle('filled', parseInt(x.dataset.star) <= selectedStarsGlobal));
+            refreshButtonsEnabled();
           };
         });
         const submitBtn = document.getElementById('submitRating');
         if(submitBtn) submitBtn.onclick = async () => {
-          if(selectedStars < 1) return;
-          await supa.from('rides').update({ rating: selectedStars }).eq('id', ride.id);
+          if(selectedStarsGlobal < 1) return;
+          const update = { rating: selectedStarsGlobal };
+          if(selectedPayment) update.final_payment_method = selectedPayment;
+          await supa.from('rides').update(update).eq('id', ride.id);
           vibrate([15,30,15,30,50]);
+          loadRideOnce(ride.id, renderRideStatusCard);
+        };
+      } else {
+        const payBtn = document.getElementById('confirmPaymentOnly');
+        if(payBtn) payBtn.onclick = async () => {
+          if(!selectedPayment) return;
+          await supa.from('rides').update({ final_payment_method: selectedPayment }).eq('id', ride.id);
+          vibrate(20);
           loadRideOnce(ride.id, renderRideStatusCard);
         };
       }
@@ -1241,16 +1315,30 @@
   }
 
   function renderRatingBlock(ride){
+    const paymentDone = !!ride.final_payment_method;
+    const paymentBlock = paymentDone ? `
+      <div class="goldBadge" style="margin-bottom:14px;">💰 Pagado por ${ride.final_payment_method}</div>
+    ` : `
+      <div class="depositBox" style="margin-bottom:14px;text-align:left;">
+        <div class="depositLabel">¿Cómo pagaste este viaje?</div>
+        <div class="segmented" id="finalPaymentGroup">
+          <div class="segOpt" data-val="efectivo">💵 Efectivo</div>
+          <div class="segOpt" data-val="transferencia">🏦 Transferencia</div>
+        </div>
+      </div>
+    `;
+
     if(ride.rating){
       return `
         <div class="card" style="text-align:center;">
           <div style="font-size:15px;font-weight:600;margin-bottom:6px;">¡Gracias por viajar con SordoGo! 🙌</div>
           <div style="font-size:13px;color:var(--text-dim);margin-bottom:12px;">Ya calificaste este viaje</div>
+          ${paymentBlock}
           <div class="starRow">
             ${[1,2,3,4,5].map(n => `<span class="starBtn filled" style="pointer-events:none;" data-star="${n}">★</span>`).join('')}
           </div>
           <div style="font-size:12px;color:var(--text-faint);margin-top:8px;">${ride.rating} de 5 estrellas</div>
-          <button class="btn" id="newRideBtn" style="margin-top:16px;">Pedir otro viaje</button>
+          ${paymentDone ? `<button class="btn" id="newRideBtn" style="margin-top:16px;">Pedir otro viaje</button>` : `<button class="btn" id="confirmPaymentOnly" style="margin-top:16px;" disabled>Confirmar pago</button>`}
         </div>
       `;
     }
@@ -1258,10 +1346,11 @@
       <div class="card" style="text-align:center;">
         <div style="font-size:15px;font-weight:600;margin-bottom:4px;">¡Gracias por viajar con SordoGo! 🙌</div>
         <div style="font-size:13px;color:var(--text-dim);margin-bottom:14px;">¿Cómo estuvo tu conductor?</div>
+        ${paymentBlock}
         <div class="starRow">
           ${[1,2,3,4,5].map(n => `<span class="starBtn" data-star="${n}">★</span>`).join('')}
         </div>
-        <button class="btn" id="submitRating" style="margin-top:16px;" disabled>Enviar calificación</button>
+        <button class="btn" id="submitRating" style="margin-top:16px;" disabled>Enviar calificación y pago</button>
         <button class="btn secondary" id="newRideBtn" style="margin-top:8px;">Pedir otro viaje sin calificar</button>
       </div>
     `;
@@ -1311,22 +1400,41 @@
     }).eq('id', ride.id);
     await supa.from('drivers').update({status:'reservado'}).eq('id', driver.id);
 
-    // Tramo 1: viene desde startLat/Lng hasta el origen (pickup) — simula que te viene a buscar
-    await animateDriverAlong(ride.id, startLat, startLng, ride.pickup_lat, ride.pickup_lng, 12000);
+    // Tramo 1: viene desde startLat/Lng hasta el origen (pickup), siguiendo calles reales si se puede
+    await animateAlongRealRoute(ride.id, startLat, startLng, ride.pickup_lat, ride.pickup_lng, 12000);
 
     await supa.from('rides').update({ status:'en_curso', updated_at:new Date().toISOString() }).eq('id', ride.id);
     await supa.from('drivers').update({status:'ocupado'}).eq('id', driver.id);
 
-    // Tramo 2: del origen al destino — simula el viaje en curso
-    await animateDriverAlong(ride.id, ride.pickup_lat, ride.pickup_lng, ride.dropoff_lat, ride.dropoff_lng, 16000);
+    // Tramo 2: del origen al destino, siguiendo calles reales si se puede
+    await animateAlongRealRoute(ride.id, ride.pickup_lat, ride.pickup_lng, ride.dropoff_lat, ride.dropoff_lng, 18000);
 
     await supa.from('rides').update({ status:'completado', updated_at:new Date().toISOString() }).eq('id', ride.id);
     await supa.from('drivers').update({status:'disponible'}).eq('id', driver.id);
   }
 
+  // Anima al auto siguiendo los puntos reales de la ruta (calles). Si no consigue la ruta real, cae a línea recta.
+  async function animateAlongRealRoute(rideId, fromLat, fromLng, toLat, toLng, durationMs){
+    const route = await fetchRealRoute(fromLat, fromLng, toLat, toLng);
+    const path = (route && route.coords && route.coords.length > 1) ? route.coords : [[fromLat,fromLng],[toLat,toLng]];
+    const totalSteps = Math.max(10, Math.round(durationMs / 1100));
+    for(let i=0; i<=totalSteps; i++){
+      const t = i/totalSteps;
+      const idxFloat = t * (path.length - 1);
+      const idx = Math.floor(idxFloat);
+      const frac = idxFloat - idx;
+      const p1 = path[idx];
+      const p2 = path[Math.min(idx+1, path.length-1)];
+      const lat = p1[0] + (p2[0]-p1[0])*frac;
+      const lng = p1[1] + (p2[1]-p1[1])*frac;
+      await supa.from('rides').update({ driver_lat:lat, driver_lng:lng }).eq('id', rideId);
+      if(i < totalSteps) await new Promise(r => setTimeout(r, durationMs/totalSteps));
+    }
+  }
+
   function animateDriverAlong(rideId, fromLat, fromLng, toLat, toLng, durationMs){
     return new Promise(resolve => {
-      const steps = Math.max(4, Math.round(durationMs / 2000));
+      const steps = Math.max(8, Math.round(durationMs / 1100)); // un paso cada ~1.1s, igual a la transición CSS
       let step = 0;
       const interval = setInterval(async () => {
         step++;
@@ -1500,6 +1608,93 @@
     };
   }
 
+  function renderDriverEditProfile(){
+    stageContent.innerHTML = `
+      <div style="padding:30px 4px 0;">
+        <div style="font-size:22px;font-weight:600;">Tu perfil</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-top:6px;">Sumá tu foto y la del auto para que te reconozcan</div>
+      </div>
+    `;
+    main.innerHTML = `
+      <div class="backLink" id="back">← volver</div>
+
+      <label>Foto de perfil</label>
+      <div class="photoPickRow">
+        <div class="photoPreview" id="previewProfile">${session.driverPhoto ? `<img src="${session.driverPhoto}" alt="">` : '👤'}</div>
+        <label class="btn secondary photoPickBtn" for="ePhotoProfile">Cambiar foto</label>
+        <input type="file" id="ePhotoProfile" accept="image/*" class="hidden">
+      </div>
+
+      <label>Foto del auto</label>
+      <div class="photoPickRow">
+        <div class="photoPreview" id="previewCar">${session.driverCarPhoto ? `<img src="${session.driverCarPhoto}" alt="">` : '🚗'}</div>
+        <label class="btn secondary photoPickBtn" for="ePhotoCar">Cambiar foto</label>
+        <input type="file" id="ePhotoCar" accept="image/*" class="hidden">
+      </div>
+
+      <label>Marca</label>
+      <input type="text" id="eBrand" value="${escapeHtml(session.driverBrand||'')}">
+      <label>Modelo</label>
+      <input type="text" id="eModel" value="${escapeHtml(session.driverModel||'')}">
+      <div class="row2" style="display:flex;gap:10px;">
+        <div style="flex:1;">
+          <label>Color</label>
+          <select id="eColor" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:13px 15px;border-radius:var(--radius-sm);font-size:15px;font-family:inherit;">
+            ${['Blanco','Negro','Gris','Plateado','Rojo','Azul','Otro'].map(c => `<option value="${c}" ${session.driverColor===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div style="flex:1;">
+          <label>Patente</label>
+          <input type="text" id="ePlate" value="${escapeHtml(session.driverPlate||'')}" style="text-transform:uppercase;">
+        </div>
+      </div>
+
+      <button class="btn" id="saveProfile">Guardar perfil</button>
+    `;
+    document.getElementById('back').onclick = () => renderDriverDashboard();
+
+    let newProfileFile = null, newCarFile = null;
+    document.getElementById('ePhotoProfile').addEventListener('change', e => {
+      newProfileFile = e.target.files[0] || null;
+      if(newProfileFile) previewPhoto(newProfileFile, 'previewProfile');
+    });
+    document.getElementById('ePhotoCar').addEventListener('change', e => {
+      newCarFile = e.target.files[0] || null;
+      if(newCarFile) previewPhoto(newCarFile, 'previewCar');
+    });
+
+    document.getElementById('saveProfile').onclick = async () => {
+      const btn = document.getElementById('saveProfile');
+      btn.disabled = true;
+      btn.textContent = 'Guardando...';
+
+      const [newPhotoUrl, newCarPhotoUrl] = await Promise.all([
+        newProfileFile ? uploadPhoto(newProfileFile, session.driverPhone, 'perfil') : Promise.resolve(session.driverPhoto),
+        newCarFile ? uploadPhoto(newCarFile, session.driverPhone, 'auto') : Promise.resolve(session.driverCarPhoto)
+      ]);
+
+      const brand = document.getElementById('eBrand').value.trim();
+      const model = document.getElementById('eModel').value.trim();
+      const color = document.getElementById('eColor').value;
+      const plate = document.getElementById('ePlate').value.trim().toUpperCase();
+
+      const { error } = await supa.from('drivers').update({
+        brand, model, color, plate, photo_url:newPhotoUrl, car_photo_url:newCarPhotoUrl
+      }).eq('id', session.driverId);
+
+      if(error){ alert('No se pudo guardar: ' + error.message); btn.disabled=false; btn.textContent='Guardar perfil'; return; }
+
+      session.driverBrand = brand;
+      session.driverModel = model;
+      session.driverColor = color;
+      session.driverPlate = plate;
+      session.driverPhoto = newPhotoUrl;
+      session.driverCarPhoto = newCarPhotoUrl;
+      vibrate([15,30,15]);
+      renderDriverDashboard();
+    };
+  }
+
   function renderDriverDashboard(){
     stageContent.innerHTML = `
       <div style="padding:30px 4px 0;display:flex;align-items:center;gap:12px;">
@@ -1512,9 +1707,13 @@
             ${plateBadge(session.driverPlate, true)}
           </div>
         </div>
-        <div class="backLink" id="logoutDriver" style="margin:0;">cambiar cuenta</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+          <div class="backLink" id="editProfileLink" style="margin:0;">editar perfil</div>
+          <div class="backLink" id="logoutDriver" style="margin:0;">cambiar cuenta</div>
+        </div>
       </div>
     `;
+    document.getElementById('editProfileLink').onclick = () => renderDriverEditProfile();
     document.getElementById('logoutDriver').onclick = () => {
       forgetAccount();
       session = { ...session, role:null, driverId:null, driverName:'', driverPhone:'', driverBrand:'', driverModel:'', driverColor:'', driverPlate:'', driverStatus:'offline' };
@@ -1794,12 +1993,67 @@
   function subscribeToPendingRides(){
     if(driversChannel){ supa.removeChannel(driversChannel); driversChannel = null; }
     driversChannel = supa.channel('pending-rides')
+      .on('postgres_changes', { event:'INSERT', schema:'public', table:'rides' }, (payload) => {
+        const ride = payload.new;
+        if(ride.driver_id === session.driverId && ride.status === 'pendiente' && ride.is_private){
+          showUrgentRequestOverlay(ride);
+        }
+      })
       .on('postgres_changes', { event:'*', schema:'public', table:'rides' }, () => {
         if(!session.activeRideId && session.driverStatus === 'disponible'){
           loadPendingRides();
         }
       })
       .subscribe();
+  }
+
+  // Aviso urgente pantalla completa para pedidos privados dirigidos a este conductor (como Uber)
+  function showUrgentRequestOverlay(ride){
+    if(session.activeRideId) return; // ya tiene un viaje activo, no lo interrumpo
+    const existing = document.getElementById('urgentOverlay');
+    if(existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'urgentOverlay';
+    overlay.className = 'urgentOverlay';
+    overlay.innerHTML = `
+      <div class="urgentCard">
+        <div class="urgentBadge">🌟 PEDIDO PRIVADO</div>
+        <div class="urgentTimer" id="urgentTimer">20</div>
+        ${avatarHtml(ride.passenger_name, null)}
+        <div class="urgentName">${escapeHtml(ride.passenger_name)}</div>
+        ${routeStrip(ride.pickup, ride.dropoff)}
+        <div class="goldBadge">💰 Seña ${money(ride.deposit_amount)} · ${ride.deposit_method}</div>
+        ${ride.estimated_fare ? `<div style="font-size:15px;font-weight:700;margin-top:10px;">Viaje estimado: ${money(ride.estimated_fare)}</div>` : ''}
+        <div style="display:flex;gap:10px;margin-top:20px;">
+          <button class="btn danger" id="declineUrgent" style="flex:1;">Rechazar</button>
+          <button class="btn success" id="acceptUrgent" style="flex:1;">Aceptar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    vibrate([30,80,30,80,30]);
+
+    let secondsLeft = 20;
+    const timerEl = document.getElementById('urgentTimer');
+    const countdown = setInterval(() => {
+      secondsLeft--;
+      if(timerEl) timerEl.textContent = secondsLeft;
+      if(secondsLeft <= 0){
+        clearInterval(countdown);
+        overlay.remove();
+      }
+    }, 1000);
+
+    document.getElementById('declineUrgent').onclick = () => {
+      clearInterval(countdown);
+      overlay.remove();
+    };
+    document.getElementById('acceptUrgent').onclick = async () => {
+      clearInterval(countdown);
+      overlay.remove();
+      await acceptRide(ride.id);
+    };
   }
 
   // ================= INIT =================
