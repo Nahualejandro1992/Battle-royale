@@ -185,6 +185,18 @@
   .switchBtn.on{background:var(--success-dim);border-color:var(--success);}
   .switchBtn.on .knob{transform:translateX(21px);background:var(--success);}
 
+  /* ===== SLIDER DE CONECTAR / DESCONECTAR (conductor) ===== */
+  .connectWrap{margin-bottom:18px;}
+  .connectTrack{position:relative;width:100%;height:64px;border-radius:34px;background:var(--surface-2);border:1px solid var(--border);overflow:hidden;user-select:none;touch-action:none;transition:background .25s, border-color .25s;}
+  .connectTrack.on{background:var(--success-dim);border-color:var(--success);}
+  .connectTrack.off{background:var(--warning-dim);border-color:var(--border);}
+  .connectLabel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13.5px;font-weight:700;letter-spacing:.2px;color:var(--text-dim);pointer-events:none;transition:opacity .15s;}
+  .connectTrack.on .connectLabel{color:var(--success);}
+  .connectThumb{position:absolute;top:4px;left:4px;width:56px;height:56px;border-radius:50%;background:var(--text);color:#0c0c0e;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;cursor:grab;transition:left .18s ease, background .2s;box-shadow:0 2px 10px rgba(0,0,0,.4);}
+  .connectThumb.dragging{transition:none;cursor:grabbing;}
+  .connectTrack.on .connectThumb{background:var(--success);color:#062015;left:calc(100% - 60px);}
+  .connectTrack.off .connectThumb{left:4px;}
+
   .empty{text-align:center;color:var(--text-faint);padding:36px 10px;font-size:13.5px;}
 
   .sectionLabel{font-size:11.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--text-faint);margin:4px 0 12px;}
@@ -281,6 +293,22 @@
   // Cargo de servicio de la plataforma: aparte de la seña, va para el mantenimiento de la app.
   // Se puede ajustar acá (monto fijo simple para esta prueba).
   const PLATFORM_SERVICE_FEE = 300;
+
+  // Tarifa estimada: bajada de bandera + precio por km. Ajustable acá.
+  const FARE_BASE = 800;
+  const FARE_PER_KM = 280;
+
+  function distanceKm(lat1, lng1, lat2, lng2){
+    const R = 6371;
+    const dLat = (lat2-lat1) * Math.PI/180;
+    const dLng = (lng2-lng1) * Math.PI/180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  function estimateFare(km){
+    return Math.round((FARE_BASE + km*FARE_PER_KM)/50)*50;
+  }
 
   let session = {
     role: null,
@@ -671,6 +699,7 @@
       </div>
 
       <div id="routeStripWrap"></div>
+      <div id="priceCardWrap"></div>
 
       <div class="confirmBox" id="confirmBox">
         <label>Tu nombre</label>
@@ -726,8 +755,26 @@
         ? routeStrip(originData?.address || 'Buscando...', destData?.address || 'Tocá el mapa')
         : '';
       const confirmBox = document.getElementById('confirmBox');
-      if(originData && destData) confirmBox.classList.add('show');
-      else confirmBox.classList.remove('show');
+      const priceWrap = document.getElementById('priceCardWrap');
+      if(originData && destData){
+        confirmBox.classList.add('show');
+        const km = distanceKm(originData.lat, originData.lng, destData.lat, destData.lng);
+        const fare = estimateFare(km);
+        session._estimatedFare = fare;
+        session._estimatedKm = km;
+        priceWrap.innerHTML = `
+          <div class="card" style="display:flex;justify-content:space-between;align-items:center;border-color:var(--accent-dim);">
+            <div>
+              <div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;font-weight:700;letter-spacing:.3px;">Precio estimado</div>
+              <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">${km.toFixed(1)} km en línea recta</div>
+            </div>
+            <div style="font-size:24px;font-weight:700;">${money(fare)}</div>
+          </div>
+        `;
+      } else {
+        confirmBox.classList.remove('show');
+        priceWrap.innerHTML = '';
+      }
     }
 
     const picker = initPickerMap('pickerMap', (evt) => {
@@ -794,6 +841,8 @@
         deposit_amount: deposit,
         deposit_method: depositMethod,
         service_fee: PLATFORM_SERVICE_FEE,
+        estimated_fare: session._estimatedFare || null,
+        distance_km: session._estimatedKm || null,
         scheduled_at: timing === 'programado' ? new Date(scheduledVal).toISOString() : null,
         driver_id: session.targetDriver ? session.targetDriver.id : null,
         status: 'pendiente'
@@ -881,6 +930,7 @@
         ${routeStrip(ride.pickup, ride.dropoff)}
         <div class="goldBadge">💰 Seña ${money(ride.deposit_amount)} · ${ride.deposit_method}</div>
         <div style="font-size:11.5px;color:var(--text-faint);margin-top:8px;">+ cargo de servicio ${money(ride.service_fee || 0)}</div>
+        ${ride.estimated_fare ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);"><span style="font-size:12.5px;color:var(--text-dim);">Precio estimado del viaje</span><span style="font-size:17px;font-weight:700;">${money(ride.estimated_fare)}</span></div>` : ''}
       </div>
       ${driverInfo}
       ${ride.status === 'pendiente' ? `
@@ -1120,25 +1170,86 @@
       </div>
     `;
     const statusLabel = {disponible:'Disponible', reservado:'Reservado', ocupado:'Ocupado', offline:'Fuera de línea'}[session.driverStatus] || session.driverStatus;
+    const canToggle = !session.activeRideId; // reservado/ocupado se manejan solos con el viaje, no a mano
+    const isOn = session.driverStatus === 'disponible';
+
     main.innerHTML = `
-      <div class="availCard">
+      <div class="availCard" style="margin-bottom:10px;">
         <div class="availText">
           <div class="ledDot ${session.driverStatus}"></div>
           <div class="availLabel">${statusLabel}</div>
         </div>
-        <div class="switchBtn ${session.driverStatus==='disponible'?'on':''}" id="availSwitch"><div class="knob"></div></div>
+      </div>
+      <div class="connectWrap">
+        <div class="connectTrack ${isOn ? 'on' : 'off'}" id="connectTrack" style="${canToggle ? '' : 'opacity:.5;pointer-events:none;'}">
+          <div class="connectLabel" id="connectLabel">${isOn ? 'Deslizá para desconectarte' : 'Deslizá para conectarte y trabajar'}</div>
+          <div class="connectThumb" id="connectThumb">${isOn ? '✓' : '🚗'}</div>
+        </div>
       </div>
       <div id="driverContent"></div>
     `;
-    document.getElementById('availSwitch').onclick = toggleAvailability;
+    setupConnectSlider(isOn, canToggle);
     renderDriverContent();
     subscribeToPendingRides();
   }
 
-  async function toggleAvailability(){
-    if(session.activeRideId) return; // reservado/ocupado se manejan solos con el viaje, no a mano
-    const newStatus = session.driverStatus === 'disponible' ? 'offline' : 'disponible';
+  function setupConnectSlider(isOn, canToggle){
+    const track = document.getElementById('connectTrack');
+    const thumb = document.getElementById('connectThumb');
+    const label = document.getElementById('connectLabel');
+    if(!track || !canToggle) return;
+
+    let dragging = false, startX = 0, thumbStartLeft = 0;
+
+    function trackWidth(){ return track.clientWidth; }
+    function thumbMax(){ return trackWidth() - 60; } // 56px thumb + 4px padding
+
+    function setThumbPos(px){
+      const clamped = Math.max(4, Math.min(thumbMax(), px));
+      thumb.style.left = clamped + 'px';
+    }
+
+    function onPointerDown(e){
+      dragging = true;
+      thumb.classList.add('dragging');
+      startX = (e.touches ? e.touches[0].clientX : e.clientX);
+      thumbStartLeft = isOn ? thumbMax() : 4;
+      e.preventDefault();
+    }
+    function onPointerMove(e){
+      if(!dragging) return;
+      const x = (e.touches ? e.touches[0].clientX : e.clientX);
+      setThumbPos(thumbStartLeft + (x - startX));
+    }
+    async function onPointerUp(e){
+      if(!dragging) return;
+      dragging = false;
+      thumb.classList.remove('dragging');
+      const x = (e.changedTouches ? e.changedTouches[0].clientX : e.clientX);
+      const moved = Math.abs(x - startX);
+      const currentLeft = parseFloat(thumb.style.left || (isOn ? thumbMax() : 4));
+      const goOn = moved < 6 ? !isOn : (currentLeft > thumbMax()/2);
+      await commitConnect(goOn);
+    }
+
+    thumb.addEventListener('mousedown', onPointerDown);
+    thumb.addEventListener('touchstart', onPointerDown, {passive:false});
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('touchmove', onPointerMove, {passive:false});
+    window.addEventListener('mouseup', onPointerUp);
+    window.addEventListener('touchend', onPointerUp);
+
+    // click directo en el riel (sin arrastrar) también funciona
+    track.addEventListener('click', (e) => {
+      if(e.target === thumb) return;
+      commitConnect(!isOn);
+    });
+  }
+
+  async function commitConnect(goOn){
+    const newStatus = goOn ? 'disponible' : 'offline';
     session.driverStatus = newStatus;
+    vibrate(goOn ? [15,40,15] : 25);
     await supa.from('drivers').update({status:newStatus, updated_at:new Date().toISOString()}).eq('id', session.driverId);
     render();
   }
@@ -1194,6 +1305,7 @@
         </div>
         ${routeStrip(r.pickup, r.dropoff)}
         <div class="goldBadge">💰 Seña ${money(r.deposit_amount)} · ${r.deposit_method}</div>
+        ${r.estimated_fare ? `<div style="font-size:12.5px;color:var(--text-dim);margin-top:6px;">Viaje estimado: <b style="color:var(--text);">${money(r.estimated_fare)}</b> (${(r.distance_km||0).toFixed(1)} km)</div>` : ''}
         <button class="btn success" data-ride="${r.id}" style="margin-top:14px;">Aceptar viaje</button>
       </div>
     `;
@@ -1284,6 +1396,7 @@
         ${routeStrip(ride.pickup, ride.dropoff)}
         <div class="goldBadge">💰 Seña ${money(ride.deposit_amount)} · ${ride.deposit_method}</div>
         <div style="font-size:11.5px;color:var(--text-faint);margin-top:8px;">El pasajero paga aparte un cargo de servicio de ${money(ride.service_fee || 0)} (no es para vos, es de la app)</div>
+        ${ride.estimated_fare ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);"><span style="font-size:12.5px;color:var(--text-dim);">Precio estimado del viaje</span><span style="font-size:17px;font-weight:700;">${money(ride.estimated_fare)}</span></div>` : ''}
         ${actionBtn}
       </div>
     `;
