@@ -207,10 +207,9 @@
 
   /* ===== MAPA ===== */
   .mapWrap{border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--border);position:relative;margin-bottom:4px;background:var(--surface-2);}
-  .mapPicker{width:100%;height:230px;}
-  .mapStatic{width:100%;height:150px;}
+  .mapPicker{width:100%;height:340px;}
+  .mapStatic{width:100%;height:190px;}
   .mapHint{position:absolute;top:10px;left:10px;right:10px;z-index:400;background:rgba(12,12,14,.82);backdrop-filter:blur(4px);color:var(--text);font-size:12px;font-weight:600;padding:9px 13px;border-radius:20px;text-align:center;pointer-events:none;}
-  .mapResetBtn{position:absolute;bottom:10px;right:10px;z-index:400;background:rgba(12,12,14,.85);color:var(--text-dim);font-size:11.5px;font-weight:600;padding:7px 12px;border-radius:20px;border:1px solid var(--border);cursor:pointer;}
   .leaflet-control-attribution{background:rgba(12,12,14,.7) !important;color:var(--text-faint) !important;font-size:9px !important;}
   .leaflet-control-attribution a{color:var(--text-dim) !important;}
   .caba-pin{width:18px;height:18px;border-radius:50%;border:3px solid var(--accent);background:#0c0c0e;box-shadow:0 0 10px rgba(75,123,255,.6);}
@@ -218,9 +217,32 @@
   .caba-pin.me{width:16px;height:16px;border:3px solid #fff;background:var(--accent);box-shadow:0 0 0 6px rgba(75,123,255,.25);}
   /* tiño el mapa para que combine con la paleta de la app en vez de verse "aparte" */
   .leaflet-tile-pane{filter:invert(93%) hue-rotate(180deg) brightness(0.94) contrast(0.88) saturate(0.7);}
-  .locateBtn{position:absolute;top:10px;right:10px;z-index:400;background:rgba(12,12,14,.85);color:var(--accent);font-size:11.5px;font-weight:700;padding:8px 12px;border-radius:20px;border:1px solid var(--accent-dim);cursor:pointer;display:flex;align-items:center;gap:5px;}
+
+  /* botones chicos tipo ícono flotando sobre el mapa (antes eran píldoras con texto) */
+  .mapIconBtn{position:absolute;top:10px;right:10px;z-index:400;width:38px;height:38px;background:rgba(12,12,14,.85);color:var(--accent);font-size:16px;border-radius:50%;border:1px solid var(--accent-dim);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .mapIconBtn:active{transform:scale(.92);}
+
+  .addressSearchRow{display:flex;gap:8px;margin-bottom:8px;}
+  .addressSearchRow input{flex:1;}
+  .iconSearchBtn{width:48px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-dim);font-size:16px;cursor:pointer;flex-shrink:0;}
+  .iconSearchBtn:active{transform:scale(.94);}
+
   .confirmBox{opacity:0;max-height:0;overflow:hidden;transition:opacity .3s, max-height .35s;}
-  .confirmBox.show{opacity:1;max-height:900px;}
+  .confirmBox.show{opacity:1;max-height:1200px;}
+
+  /* ===== FOTOS DE PERFIL / AUTO ===== */
+  .photoPickRow{display:flex;align-items:center;gap:14px;margin-top:8px;}
+  .photoPreview{width:56px;height:56px;border-radius:14px;background:var(--surface-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;flex-shrink:0;}
+  .photoPreview img{width:100%;height:100%;object-fit:cover;}
+  .photoPickBtn{width:auto;flex:1;text-align:center;margin:0;padding:12px;}
+  .avatarPhoto{padding:0;overflow:hidden;}
+  .avatarPhoto img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+
+  /* ===== ESTRELLAS DE CALIFICACIÓN ===== */
+  .starRow{display:flex;justify-content:center;gap:8px;}
+  .starBtn{font-size:34px;color:var(--border);cursor:pointer;transition:color .15s, transform .1s;line-height:1;}
+  .starBtn:active{transform:scale(.85);}
+  .starBtn.filled{color:var(--gold);}
 
   /* ===== PATENTE ESTILO CHAPA REAL ===== */
   .plateBadge{display:inline-flex;align-items:center;background:#f2f2ee;color:#0c0c0e;font-family:'Space Grotesk',monospace;font-weight:700;font-size:13px;letter-spacing:1.5px;padding:4px 10px;border-radius:4px;border:2px solid #0c0c0e;box-shadow:0 1px 0 rgba(255,255,255,.4) inset;}
@@ -314,12 +336,28 @@
     return Math.round((FARE_BASE + km*FARE_PER_KM)/50)*50;
   }
 
+  // Ruta real por calles (motor de ruteo público OSRM, gratis, sin key).
+  // Si falla (sin red, servidor caído), devuelve null y quien lo llama cae a línea recta.
+  async function fetchRealRoute(lat1, lng1, lat2, lng2){
+    try{
+      const url = `https://router.project-osrm.org/route/v1/driving/${lng1},${lat1};${lng2},${lat2}?overview=full&geometries=geojson`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if(data.routes && data.routes[0]){
+        const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+        return { coords, km: data.routes[0].distance/1000, minutes: data.routes[0].duration/60 };
+      }
+    } catch(e){ console.warn('Ruteo real falló, uso línea recta:', e); }
+    return null;
+  }
+
   let session = {
     role: null,
     passengerName: '', passengerPhone: '',
     targetDriver: null, // si el pasajero eligió un conductor específico del directorio
     driverId: null, driverName: '', driverPhone: '',
     driverBrand: '', driverModel: '', driverColor: '', driverPlate: '',
+    driverPhoto: '', driverCarPhoto: '',
     driverStatus: 'offline',
     activeRideId: null
   };
@@ -332,6 +370,35 @@
 
   function plateBadge(plate, mini){
     return `<span class="plateBadge${mini?' mini':''}">${escapeHtml(plate||'S/D')}</span>`;
+  }
+
+  function previewPhoto(file, previewElId){
+    const reader = new FileReader();
+    reader.onload = e => {
+      const el = document.getElementById(previewElId);
+      if(el) el.innerHTML = `<img src="${e.target.result}" alt="">`;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function uploadPhoto(file, phone, kind){
+    if(!file || !supa) return null;
+    try{
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `${phone.replace(/[^0-9]/g,'')}-${kind}-${Date.now()}.${ext}`;
+      const { error } = await supa.storage.from('sordogo-photos').upload(path, file, { upsert:true });
+      if(error){ console.warn('No se pudo subir la foto:', error.message); return null; }
+      const { data } = supa.storage.from('sordogo-photos').getPublicUrl(path);
+      return data?.publicUrl || null;
+    } catch(e){ console.warn('Error subiendo foto:', e); return null; }
+  }
+
+  // Avatar real (foto) si existe, si no las iniciales de siempre
+  function avatarHtml(name, photoUrl, extraStyle){
+    if(photoUrl){
+      return `<div class="avatar avatarPhoto" style="${extraStyle||''}"><img src="${photoUrl}" alt=""></div>`;
+    }
+    return `<div class="avatar" style="${extraStyle||''}">${initials(name)}</div>`;
   }
 
   const COLOR_HEX = { 'Blanco':'#f2f2ee','Negro':'#1a1a1a','Gris':'#8a8d94','Plateado':'#c7cad1','Rojo':'#e2495a','Azul':'#4b7bff','Otro':'#d7b56d' };
@@ -403,6 +470,20 @@
     return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   }
 
+  // Busca una dirección escrita y la convierte en coordenadas, acotado a CABA
+  async function forwardGeocode(query){
+    try{
+      const viewbox = `${CABA_BOUNDS[0][1]},${CABA_BOUNDS[1][0]},${CABA_BOUNDS[1][1]},${CABA_BOUNDS[0][0]}`;
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', CABA, Argentina')}&viewbox=${viewbox}&bounded=1&limit=1`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if(data && data[0]){
+        return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+      }
+    } catch(e){ console.warn('búsqueda de dirección falló', e); }
+    return null;
+  }
+
   function inCaba(lat, lng){
     return lat >= CABA_BOUNDS[0][0] && lat <= CABA_BOUNDS[1][0] && lng >= CABA_BOUNDS[0][1] && lng <= CABA_BOUNDS[1][1];
   }
@@ -417,7 +498,21 @@
     function redrawLine(){
       if(line){ map.removeLayer(line); line = null; }
       if(originPt && destPt){
-        line = L.polyline([[originPt.lat,originPt.lng],[destPt.lat,destPt.lng]], { color:'#4b7bff', weight:2, dashArray:'2 8', opacity:.8 }).addTo(map);
+        // línea recta provisoria mientras se calcula la ruta real
+        line = L.polyline([[originPt.lat,originPt.lng],[destPt.lat,destPt.lng]], { color:'#4b7bff', weight:2, dashArray:'2 8', opacity:.6 }).addTo(map);
+      }
+    }
+
+    async function drawRealRoute(){
+      if(!originPt || !destPt) return;
+      const route = await fetchRealRoute(originPt.lat, originPt.lng, destPt.lat, destPt.lng);
+      if(line){ map.removeLayer(line); line = null; }
+      if(route){
+        line = L.polyline(route.coords, { color:'#4b7bff', weight:4, opacity:.85 }).addTo(map);
+        onUpdate({ stage:'route-real', km: route.km, minutes: route.minutes });
+      } else {
+        line = L.polyline([[originPt.lat,originPt.lng],[destPt.lat,destPt.lng]], { color:'#4b7bff', weight:2, dashArray:'2 8', opacity:.7 }).addTo(map);
+        onUpdate({ stage:'route-fallback' });
       }
     }
 
@@ -429,6 +524,7 @@
       onUpdate({ stage:'origin-set' });
       const address = await reverseGeocode(lat, lng);
       onUpdate({ stage:'origin-address', address, lat, lng, isGPS });
+      if(destPt) drawRealRoute();
     }
 
     async function setDest(lat, lng){
@@ -440,6 +536,7 @@
       const address = await reverseGeocode(lat, lng);
       onUpdate({ stage:'dest-address', address, lat, lng });
       map.fitBounds([[originPt.lat,originPt.lng],[destPt.lat,destPt.lng]], {padding:[40,40]});
+      drawRealRoute();
     }
 
     map.on('click', (e) => {
@@ -476,13 +573,18 @@
         onUpdate({ stage:'reset' });
       },
       locateMe: tryLocateMe,
+      setOriginByCoords: (lat,lng) => setOrigin(lat, lng, false),
+      setDestByCoords: (lat,lng) => setDest(lat, lng),
+      hasOrigin: () => !!originPt,
       invalidate(){ setTimeout(()=> map.invalidateSize(), 80); }
     };
   }
 
   // Mapa de solo lectura para mostrar un viaje ya cargado (con lat/lng guardados)
+  const CAR_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 16.5V12.8c0-.4.13-.79.38-1.1L6.6 9.3c.28-.35.7-.55 1.15-.55h8.5c.45 0 .87.2 1.15.55l1.72 2.4c.25.31.38.7.38 1.1v3.7" stroke="#0c0c0e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="3" y="16.5" width="18" height="3" rx="1.2" stroke="#0c0c0e" stroke-width="1.6"/><circle cx="7" cy="19.5" r="1.4" fill="#0c0c0e"/><circle cx="17" cy="19.5" r="1.4" fill="#0c0c0e"/><path d="M6.8 12.2h10.4" stroke="#0c0c0e" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+
   function carIcon(){
-    return L.divIcon({ className:'', html:`<div class="car-pin-wrap"><div class="ring"></div><div class="ring"></div><div class="core">🚗</div></div>`, iconSize:[32,32], iconAnchor:[16,16] });
+    return L.divIcon({ className:'', html:`<div class="car-pin-wrap"><div class="ring"></div><div class="ring"></div><div class="core">${CAR_SVG}</div></div>`, iconSize:[32,32], iconAnchor:[16,16] });
   }
 
   function initStaticMap(containerId, pLat, pLng, dLat, dLng, driverLat, driverLng){
@@ -491,7 +593,13 @@
     if(pLat && pLng){ L.marker([pLat,pLng], {icon:pinIcon(false)}).addTo(map); pts.push([pLat,pLng]); }
     if(dLat && dLng){ L.marker([dLat,dLng], {icon:pinIcon(true)}).addTo(map); pts.push([dLat,dLng]); }
     if(pLat && pLng && dLat && dLng){
-      L.polyline([[pLat,pLng],[dLat,dLng]], { color:'#4b7bff', weight:2, dashArray:'2 8', opacity:.8 }).addTo(map);
+      const straightLine = L.polyline([[pLat,pLng],[dLat,dLng]], { color:'#4b7bff', weight:2, dashArray:'2 8', opacity:.6 }).addTo(map);
+      fetchRealRoute(pLat, pLng, dLat, dLng).then(route => {
+        if(route){
+          map.removeLayer(straightLine);
+          L.polyline(route.coords, { color:'#4b7bff', weight:4, opacity:.85 }).addTo(map);
+        }
+      });
     }
     if(driverLat && driverLng){
       L.marker([driverLat,driverLng], {icon:carIcon()}).addTo(map);
@@ -612,7 +720,7 @@
 
     el.innerHTML = sorted.map(d => `
       <div class="card driverListCard">
-        <div class="avatar">${initials(d.name)}</div>
+        ${avatarHtml(d.name, d.photo_url)}
         <div class="driverListInfo">
           <div class="driverListName">${escapeHtml(d.name)}</div>
           <span class="statusPill ${d.status}" style="margin:6px 0;"><span class="ledDot ${d.status}"></span>${statusLabel[d.status]||d.status}</span>
@@ -698,6 +806,7 @@
     let originData = null, destData = null;
     let depositMethod = 'efectivo';
     let timing = 'ahora';
+    let routeKm = null, routeMinutes = null;
 
     const targetChip = session.targetDriver ? `
       <div class="card" style="display:flex;align-items:center;gap:12px;border-color:var(--accent-dim);">
@@ -719,12 +828,21 @@
 
       ${targetChip}
 
-      <label>Tu ubicación y destino</label>
+      <label>Origen y destino</label>
+      <div class="addressSearchRow">
+        <input type="text" id="searchOrigin" placeholder="Escribí el origen (o tocá el mapa)">
+        <button class="iconSearchBtn" id="btnSearchOrigin">🔎</button>
+      </div>
+      <div class="addressSearchRow">
+        <input type="text" id="searchDest" placeholder="Escribí el destino (o tocá el mapa)">
+        <button class="iconSearchBtn" id="btnSearchDest">🔎</button>
+      </div>
+
       <div class="mapWrap">
         <div class="mapPicker" id="pickerMap"></div>
         <div class="mapHint" id="mapHint">Buscando tu ubicación...</div>
-        <div class="locateBtn" id="locateBtn">📍 Mi ubicación</div>
-        <div class="mapResetBtn" id="mapResetBtn">Reiniciar puntos</div>
+        <div class="mapIconBtn" id="locateBtn" title="Mi ubicación">📍</div>
+        <div class="mapIconBtn" id="mapResetBtn" title="Reiniciar puntos" style="right:56px;">↺</div>
       </div>
 
       <div id="routeStripWrap"></div>
@@ -792,7 +910,8 @@
       const priceWrap = document.getElementById('priceCardWrap');
       if(originData && destData){
         confirmBox.classList.add('show');
-        const km = distanceKm(originData.lat, originData.lng, destData.lat, destData.lng);
+        const usingReal = routeKm !== null;
+        const km = usingReal ? routeKm : distanceKm(originData.lat, originData.lng, destData.lat, destData.lng);
         const fare = estimateFare(km);
         session._estimatedFare = fare;
         session._estimatedKm = km;
@@ -800,7 +919,7 @@
           <div class="card" style="display:flex;justify-content:space-between;align-items:center;border-color:var(--accent-dim);">
             <div>
               <div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;font-weight:700;letter-spacing:.3px;">Precio estimado</div>
-              <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">${km.toFixed(1)} km en línea recta</div>
+              <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">${km.toFixed(1)} km ${usingReal ? 'por calles' : '(calculando ruta real...)'}${routeMinutes ? ' · ~'+Math.round(routeMinutes)+' min' : ''}</div>
             </div>
             <div style="font-size:24px;font-weight:700;">${money(fare)}</div>
           </div>
@@ -813,17 +932,26 @@
 
     const picker = initPickerMap('pickerMap', (evt) => {
       const hint = document.getElementById('mapHint');
-      if(evt.stage === 'origin-set') hint.textContent = 'Ahora tocá el mapa para marcar el destino';
+      if(evt.stage === 'origin-set') hint.textContent = 'Ahora tocá el mapa o escribí el destino';
       if(evt.stage === 'origin-address'){
         originData = { address: evt.address, lat: evt.lat, lng: evt.lng };
-        if(evt.isGPS) hint.textContent = 'Esa es tu ubicación · tocá el destino en el mapa';
+        document.getElementById('searchOrigin').value = evt.address;
+        if(evt.isGPS) hint.textContent = 'Esa es tu ubicación · marcá el destino';
         refreshRouteStripUI();
       }
-      if(evt.stage === 'dest-set') hint.textContent = 'Listo, confirmá abajo';
-      if(evt.stage === 'dest-address'){ destData = { address: evt.address, lat: evt.lat, lng: evt.lng }; refreshRouteStripUI(); }
+      if(evt.stage === 'dest-set') hint.textContent = 'Calculando la ruta real...';
+      if(evt.stage === 'dest-address'){
+        destData = { address: evt.address, lat: evt.lat, lng: evt.lng };
+        document.getElementById('searchDest').value = evt.address;
+        refreshRouteStripUI();
+      }
+      if(evt.stage === 'route-real'){ routeKm = evt.km; routeMinutes = evt.minutes; hint.textContent = 'Listo, confirmá abajo'; refreshRouteStripUI(); }
+      if(evt.stage === 'route-fallback'){ hint.textContent = 'Listo, confirmá abajo (ruta aproximada)'; }
       if(evt.stage === 'out-of-caba') hint.textContent = 'Estás fuera de CABA, marcá tu origen manualmente';
       if(evt.stage === 'reset'){
-        originData = null; destData = null;
+        originData = null; destData = null; routeKm = null; routeMinutes = null;
+        document.getElementById('searchOrigin').value = '';
+        document.getElementById('searchDest').value = '';
         hint.textContent = 'Tocá el mapa para marcar dónde te recogemos';
         refreshRouteStripUI();
       }
@@ -835,6 +963,20 @@
       document.getElementById('mapHint').textContent = 'Buscando tu ubicación...';
       picker.locateMe();
     };
+
+    async function searchAndSet(query, isOrigin){
+      if(!query.trim()) return;
+      const hint = document.getElementById('mapHint');
+      hint.textContent = 'Buscando "' + query + '"...';
+      const result = await forwardGeocode(query);
+      if(!result){ hint.textContent = 'No encontré esa dirección en CABA, probá con otro texto'; return; }
+      if(isOrigin) picker.setOriginByCoords(result.lat, result.lng);
+      else picker.setDestByCoords(result.lat, result.lng);
+    }
+    document.getElementById('btnSearchOrigin').onclick = () => searchAndSet(document.getElementById('searchOrigin').value, true);
+    document.getElementById('btnSearchDest').onclick = () => searchAndSet(document.getElementById('searchDest').value, false);
+    document.getElementById('searchOrigin').addEventListener('keydown', e => { if(e.key==='Enter') searchAndSet(e.target.value, true); });
+    document.getElementById('searchDest').addEventListener('keydown', e => { if(e.key==='Enter') searchAndSet(e.target.value, false); });
 
     document.querySelectorAll('#depositMethodGroup .segOpt').forEach(el => {
       el.onclick = () => {
@@ -941,7 +1083,7 @@
       driverInfo = `
         <div class="card">
           <div class="who">
-            <div class="avatar">${initials(ride.driver_name)}</div>
+            ${avatarHtml(ride.driver_name, ride.driver_photo_url)}
             <div>
               <div class="whoName">${escapeHtml(ride.driver_name)}</div>
               <div class="carMeta">
@@ -951,6 +1093,7 @@
               </div>
             </div>
           </div>
+          ${ride.driver_car_photo_url ? `<img src="${ride.driver_car_photo_url}" alt="Auto del conductor" style="width:100%;border-radius:12px;margin-bottom:12px;max-height:160px;object-fit:cover;">` : ''}
           ${ride.driver_phone ? `<a href="tel:${escapeHtml(ride.driver_phone)}" class="btn secondary" style="text-decoration:none;">Llamar al conductor</a>` : ''}
         </div>
       `;
@@ -973,7 +1116,7 @@
           <button class="btn secondary" id="simulateBtn">Simular conductor de prueba</button>
         </div>
       ` : ''}
-      ${ride.status === 'completado' ? '<button class="btn" id="newRideBtn">Pedir otro viaje</button>' : ''}
+      ${ride.status === 'completado' ? renderRatingBlock(ride) : ''}
     `;
 
     const trackMapEl = document.getElementById('trackMap');
@@ -992,10 +1135,56 @@
       vibrate([20,40,20,40,60]);
       const btn = document.getElementById('newRideBtn');
       if(btn) btn.onclick = () => { unsubscribeRide(); session.activeRideId = null; render(); };
+
+      if(!ride.rating){
+        let selectedStars = 0;
+        const stars = document.querySelectorAll('.starBtn');
+        stars.forEach(s => {
+          s.onclick = () => {
+            selectedStars = parseInt(s.dataset.star);
+            stars.forEach(x => x.classList.toggle('filled', parseInt(x.dataset.star) <= selectedStars));
+            document.getElementById('submitRating').disabled = false;
+          };
+        });
+        const submitBtn = document.getElementById('submitRating');
+        if(submitBtn) submitBtn.onclick = async () => {
+          if(selectedStars < 1) return;
+          await supa.from('rides').update({ rating: selectedStars }).eq('id', ride.id);
+          vibrate([15,30,15,30,50]);
+          loadRideOnce(ride.id, renderRideStatusCard);
+        };
+      }
     }
     if(ride.status === 'aceptado'){
       vibrate([15,50,15]);
     }
+  }
+
+  function renderRatingBlock(ride){
+    if(ride.rating){
+      return `
+        <div class="card" style="text-align:center;">
+          <div style="font-size:15px;font-weight:600;margin-bottom:6px;">¡Gracias por viajar con SordoGo! 🙌</div>
+          <div style="font-size:13px;color:var(--text-dim);margin-bottom:12px;">Ya calificaste este viaje</div>
+          <div class="starRow">
+            ${[1,2,3,4,5].map(n => `<span class="starBtn filled" style="pointer-events:none;" data-star="${n}">★</span>`).join('')}
+          </div>
+          <div style="font-size:12px;color:var(--text-faint);margin-top:8px;">${ride.rating} de 5 estrellas</div>
+          <button class="btn" id="newRideBtn" style="margin-top:16px;">Pedir otro viaje</button>
+        </div>
+      `;
+    }
+    return `
+      <div class="card" style="text-align:center;">
+        <div style="font-size:15px;font-weight:600;margin-bottom:4px;">¡Gracias por viajar con SordoGo! 🙌</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-bottom:14px;">¿Cómo estuvo tu conductor?</div>
+        <div class="starRow">
+          ${[1,2,3,4,5].map(n => `<span class="starBtn" data-star="${n}">★</span>`).join('')}
+        </div>
+        <button class="btn" id="submitRating" style="margin-top:16px;" disabled>Enviar calificación</button>
+        <button class="btn secondary" id="newRideBtn" style="margin-top:8px;">Pedir otro viaje sin calificar</button>
+      </div>
+    `;
   }
 
   // Mueve un punto lat/lng un paso hacia otro (interpolación lineal simple)
@@ -1034,6 +1223,8 @@
       driver_model: driver.model,
       driver_plate: driver.plate,
       driver_color: driver.color,
+      driver_photo_url: driver.photo_url,
+      driver_car_photo_url: driver.car_photo_url,
       driver_lat: startLat,
       driver_lng: startLng,
       updated_at: new Date().toISOString()
@@ -1110,6 +1301,8 @@
         session.driverModel = data.model;
         session.driverColor = data.color;
         session.driverPlate = data.plate;
+        session.driverPhoto = data.photo_url;
+        session.driverCarPhoto = data.car_photo_url;
         session.driverStatus = data.status; // respeta el estado real guardado, no fuerza "disponible"
         rememberAccount('conductor', data.phone);
         vibrate(20);
@@ -1155,9 +1348,35 @@
           <input type="text" id="dPlate" placeholder="AB123CD" style="text-transform:uppercase;">
         </div>
       </div>
+
+      <label>Foto de perfil (opcional)</label>
+      <div class="photoPickRow">
+        <div class="photoPreview" id="previewProfile">👤</div>
+        <label class="btn secondary photoPickBtn" for="dPhotoProfile">Elegir foto</label>
+        <input type="file" id="dPhotoProfile" accept="image/*" class="hidden">
+      </div>
+
+      <label>Foto del auto (opcional)</label>
+      <div class="photoPickRow">
+        <div class="photoPreview" id="previewCar">🚗</div>
+        <label class="btn secondary photoPickBtn" for="dPhotoCar">Elegir foto</label>
+        <input type="file" id="dPhotoCar" accept="image/*" class="hidden">
+      </div>
+
       <button class="btn" id="registerDriver">Empezar a manejar</button>
     `;
     document.getElementById('back').onclick = () => { session.role = null; render(); };
+
+    let profileFile = null, carFile = null;
+    document.getElementById('dPhotoProfile').addEventListener('change', e => {
+      profileFile = e.target.files[0] || null;
+      if(profileFile) previewPhoto(profileFile, 'previewProfile');
+    });
+    document.getElementById('dPhotoCar').addEventListener('change', e => {
+      carFile = e.target.files[0] || null;
+      if(carFile) previewPhoto(carFile, 'previewCar');
+    });
+
     document.getElementById('registerDriver').onclick = async () => {
       const name = document.getElementById('dName').value.trim();
       const phone = document.getElementById('dPhone').value.trim();
@@ -1170,14 +1389,27 @@
         alert('Falta configurar la anon key de Supabase en el código.');
         return;
       }
+
+      const registerBtn = document.getElementById('registerDriver');
+      registerBtn.disabled = true;
+      registerBtn.textContent = 'Guardando...';
+
+      const [photoUrl, carPhotoUrl] = await Promise.all([
+        uploadPhoto(profileFile, phone, 'perfil'),
+        uploadPhoto(carFile, phone, 'auto')
+      ]);
+
       const { data, error } = await supa.from('drivers').upsert({
-        name, phone, brand, model, color, plate, status: 'disponible'
+        name, phone, brand, model, color, plate, status: 'disponible',
+        photo_url: photoUrl, car_photo_url: carPhotoUrl
       }, { onConflict: 'phone' }).select().single();
-      if(error){ alert('No se pudo registrar: ' + error.message); return; }
+      if(error){ alert('No se pudo registrar: ' + error.message); registerBtn.disabled=false; registerBtn.textContent='Empezar a manejar'; return; }
 
       session.driverId = data.id;
       session.driverName = name;
       session.driverPhone = phone;
+      session.driverPhoto = photoUrl;
+      session.driverCarPhoto = carPhotoUrl;
       session.driverBrand = brand;
       session.driverModel = model;
       session.driverColor = color;
@@ -1191,7 +1423,7 @@
   function renderDriverDashboard(){
     stageContent.innerHTML = `
       <div style="padding:30px 4px 0;display:flex;align-items:center;gap:12px;">
-        <div class="avatar" style="width:46px;height:46px;font-size:16px;">${initials(session.driverName)}</div>
+        ${avatarHtml(session.driverName, session.driverPhoto, 'width:46px;height:46px;font-size:16px;')}
         <div style="flex:1;">
           <div style="font-size:16px;font-weight:600;">${escapeHtml(session.driverName)}</div>
           <div class="carMeta" style="margin-top:4px;">
@@ -1356,6 +1588,8 @@
       driver_model: session.driverModel,
       driver_plate: session.driverPlate,
       driver_color: session.driverColor,
+      driver_photo_url: session.driverPhoto,
+      driver_car_photo_url: session.driverCarPhoto,
       updated_at: new Date().toISOString()
     }).eq('id', rideId).eq('status','pendiente').select().single();
 
@@ -1510,6 +1744,8 @@
         session.driverModel = data.model;
         session.driverColor = data.color;
         session.driverPlate = data.plate;
+        session.driverPhoto = data.photo_url;
+        session.driverCarPhoto = data.car_photo_url;
         session.driverStatus = data.status;
         return render();
       }
@@ -1524,6 +1760,22 @@
     }
     render();
   }
+  // Deslizar desde el borde izquierdo hacia la derecha = volver (como en iOS)
+  (function setupSwipeBack(){
+    let startX = null;
+    const appEl = document.getElementById('app');
+    appEl.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, {passive:true});
+    appEl.addEventListener('touchend', e => {
+      if(startX === null) return;
+      const endX = e.changedTouches[0].clientX;
+      if(startX < 40 && (endX - startX) > 80){
+        const backBtn = document.getElementById('back');
+        if(backBtn) backBtn.click();
+      }
+      startX = null;
+    }, {passive:true});
+  })();
+
   boot();
 })();
 </script>
