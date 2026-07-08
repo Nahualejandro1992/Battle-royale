@@ -192,7 +192,7 @@
   .connectTrack.off{background:var(--warning-dim);border-color:var(--border);}
   .connectLabel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13.5px;font-weight:700;letter-spacing:.2px;color:var(--text-dim);pointer-events:none;transition:opacity .15s;}
   .connectTrack.on .connectLabel{color:var(--success);}
-  .connectThumb{position:absolute;top:4px;left:4px;width:56px;height:56px;border-radius:50%;background:var(--text);color:#0c0c0e;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;cursor:grab;transition:left .18s ease, background .2s;box-shadow:0 2px 10px rgba(0,0,0,.4);}
+  .connectThumb{position:absolute;top:4px;left:4px;width:56px;height:56px;border-radius:50%;background:var(--text);color:#0c0c0e;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;cursor:grab;transition:left .18s ease, background .2s;box-shadow:0 2px 10px rgba(0,0,0,.4);touch-action:none;}
   .connectThumb.dragging{transition:none;cursor:grabbing;}
   .connectTrack.on .connectThumb{background:var(--success);color:#062015;left:calc(100% - 60px);}
   .connectTrack.off .connectThumb{left:4px;}
@@ -217,7 +217,7 @@
   .caba-pin.dest{border-color:var(--gold);box-shadow:0 0 10px rgba(215,181,109,.6);border-radius:5px;}
   .caba-pin.me{width:16px;height:16px;border:3px solid #fff;background:var(--accent);box-shadow:0 0 0 6px rgba(75,123,255,.25);}
   /* tiño el mapa para que combine con la paleta de la app en vez de verse "aparte" */
-  .leaflet-tile-pane{filter:saturate(1.25) hue-rotate(-6deg) brightness(0.95) contrast(1.05);}
+  .leaflet-tile-pane{filter:invert(93%) hue-rotate(180deg) brightness(0.94) contrast(0.88) saturate(0.7);}
   .locateBtn{position:absolute;top:10px;right:10px;z-index:400;background:rgba(12,12,14,.85);color:var(--accent);font-size:11.5px;font-weight:700;padding:8px 12px;border-radius:20px;border:1px solid var(--accent-dim);cursor:pointer;display:flex;align-items:center;gap:5px;}
   .confirmBox{opacity:0;max-height:0;overflow:hidden;transition:opacity .3s, max-height .35s;}
   .confirmBox.show{opacity:1;max-height:900px;}
@@ -243,7 +243,11 @@
   .driverListName{font-size:15px;font-weight:600;}
 
   /* ===== MARCADOR DE AUTO EN VIVO ===== */
-  .car-pin{width:22px;height:22px;border-radius:50%;background:var(--gold);border:3px solid #0c0c0e;box-shadow:0 0 0 6px rgba(215,181,109,.3);display:flex;align-items:center;justify-content:center;font-size:11px;}
+  .car-pin-wrap{position:relative;width:32px;height:32px;}
+  .car-pin-wrap .ring{position:absolute;inset:-9px;border-radius:50%;border:2px solid var(--gold);opacity:0;animation:carPulse 1.6s ease-out infinite;}
+  .car-pin-wrap .ring:nth-child(2){animation-delay:.55s;}
+  .car-pin-wrap .core{position:absolute;inset:0;border-radius:50%;background:var(--gold);border:3px solid #0c0c0e;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 2px 10px rgba(0,0,0,.5);}
+  @keyframes carPulse{0%{transform:scale(.55);opacity:.85;}100%{transform:scale(2);opacity:0;}}
 </style>
 </head>
 <body>
@@ -336,10 +340,31 @@
     return `<span class="colorDot" style="background:${hex};"></span>`;
   }
 
+  // ================= RECORDAR CUENTA (para no volver a elegir pasajero/conductor cada vez) =================
+  function rememberAccount(role, phone){
+    try{
+      localStorage.setItem('sordogo_role', role);
+      localStorage.setItem('sordogo_phone', phone);
+    } catch(e){ /* si el navegador bloquea storage, la app sigue andando igual, solo no recuerda */ }
+  }
+  function getRememberedAccount(){
+    try{
+      const role = localStorage.getItem('sordogo_role');
+      const phone = localStorage.getItem('sordogo_phone');
+      if(role && phone) return { role, phone };
+    } catch(e){}
+    return null;
+  }
+  function forgetAccount(){
+    try{ localStorage.removeItem('sordogo_role'); localStorage.removeItem('sordogo_phone'); } catch(e){}
+  }
+
   // ================= MAPA (Leaflet, limitado a CABA) =================
   const CABA_BOUNDS = [[-34.715, -58.535], [-34.520, -58.330]]; // SW, NE
   const CABA_CENTER = [-34.6037, -58.3816]; // Obelisco
-  const DARK_TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+  // Voyager tiene jerarquía de calles clara (autopistas, avenidas, calles, parques, agua)
+  // y lo oscurecemos con un filtro CSS en vez de perder ese detalle con un estilo "dark" plano.
+  const DARK_TILES = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
   const TILE_ATTR = '&copy; OpenStreetMap contributors &copy; CARTO';
 
   function makeBaseMap(containerId, interactive){
@@ -457,7 +482,7 @@
 
   // Mapa de solo lectura para mostrar un viaje ya cargado (con lat/lng guardados)
   function carIcon(){
-    return L.divIcon({ className:'', html:`<div class="car-pin">🚗</div>`, iconSize:[22,22] });
+    return L.divIcon({ className:'', html:`<div class="car-pin-wrap"><div class="ring"></div><div class="ring"></div><div class="core">🚗</div></div>`, iconSize:[32,32], iconAnchor:[16,16] });
   }
 
   function initStaticMap(containerId, pLat, pLng, dLat, dLng, driverLat, driverLng){
@@ -656,6 +681,7 @@
 
       session.passengerName = data.name;
       session.passengerPhone = data.phone;
+      rememberAccount('pasajero', data.phone);
       vibrate(20);
       render();
     };
@@ -686,7 +712,10 @@
     ` : '';
 
     main.innerHTML = `
-      <div class="backLink" id="back">← volver</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="backLink" id="back">← volver</div>
+        <div class="backLink" id="logoutPassenger">cambiar cuenta</div>
+      </div>
 
       ${targetChip}
 
@@ -737,6 +766,11 @@
       </div>
     `;
     document.getElementById('back').onclick = () => { session.role = null; render(); };
+    document.getElementById('logoutPassenger').onclick = () => {
+      forgetAccount();
+      session.role = null; session.passengerName = ''; session.passengerPhone = '';
+      render();
+    };
 
     const clearTarget = document.getElementById('clearTarget');
     if(clearTarget) clearTarget.onclick = () => { session.targetDriver = null; render(); };
@@ -1076,10 +1110,8 @@
         session.driverModel = data.model;
         session.driverColor = data.color;
         session.driverPlate = data.plate;
-        session.driverStatus = data.status === 'offline' ? 'disponible' : data.status;
-        if(data.status === 'offline'){
-          await supa.from('drivers').update({status:'disponible'}).eq('id', data.id);
-        }
+        session.driverStatus = data.status; // respeta el estado real guardado, no fuerza "disponible"
+        rememberAccount('conductor', data.phone);
         vibrate(20);
         render();
       } else {
@@ -1151,6 +1183,7 @@
       session.driverColor = color;
       session.driverPlate = plate;
       session.driverStatus = 'disponible';
+      rememberAccount('conductor', phone);
       render();
     };
   }
@@ -1159,7 +1192,7 @@
     stageContent.innerHTML = `
       <div style="padding:30px 4px 0;display:flex;align-items:center;gap:12px;">
         <div class="avatar" style="width:46px;height:46px;font-size:16px;">${initials(session.driverName)}</div>
-        <div>
+        <div style="flex:1;">
           <div style="font-size:16px;font-weight:600;">${escapeHtml(session.driverName)}</div>
           <div class="carMeta" style="margin-top:4px;">
             ${colorDot(session.driverColor)}
@@ -1167,8 +1200,14 @@
             ${plateBadge(session.driverPlate, true)}
           </div>
         </div>
+        <div class="backLink" id="logoutDriver" style="margin:0;">cambiar cuenta</div>
       </div>
     `;
+    document.getElementById('logoutDriver').onclick = () => {
+      forgetAccount();
+      session = { ...session, role:null, driverId:null, driverName:'', driverPhone:'', driverBrand:'', driverModel:'', driverColor:'', driverPlate:'', driverStatus:'offline' };
+      render();
+    };
     const statusLabel = {disponible:'Disponible', reservado:'Reservado', ocupado:'Ocupado', offline:'Fuera de línea'}[session.driverStatus] || session.driverStatus;
     const canToggle = !session.activeRideId; // reservado/ocupado se manejan solos con el viaje, no a mano
     const isOn = session.driverStatus === 'disponible';
@@ -1196,48 +1235,40 @@
   function setupConnectSlider(isOn, canToggle){
     const track = document.getElementById('connectTrack');
     const thumb = document.getElementById('connectThumb');
-    const label = document.getElementById('connectLabel');
-    if(!track || !canToggle) return;
+    if(!track || !thumb || !canToggle) return;
 
-    let dragging = false, startX = 0, thumbStartLeft = 0;
+    let dragging = false, startX = 0, thumbStartLeft = 0, moved = 0;
 
-    function trackWidth(){ return track.clientWidth; }
-    function thumbMax(){ return trackWidth() - 60; } // 56px thumb + 4px padding
+    function thumbMax(){ return track.clientWidth - 60; } // 56px thumb + 4px padding
 
     function setThumbPos(px){
       const clamped = Math.max(4, Math.min(thumbMax(), px));
       thumb.style.left = clamped + 'px';
     }
 
-    function onPointerDown(e){
+    thumb.addEventListener('pointerdown', (e) => {
       dragging = true;
+      moved = 0;
       thumb.classList.add('dragging');
-      startX = (e.touches ? e.touches[0].clientX : e.clientX);
+      thumb.setPointerCapture(e.pointerId);
+      startX = e.clientX;
       thumbStartLeft = isOn ? thumbMax() : 4;
-      e.preventDefault();
-    }
-    function onPointerMove(e){
+    });
+
+    thumb.addEventListener('pointermove', (e) => {
       if(!dragging) return;
-      const x = (e.touches ? e.touches[0].clientX : e.clientX);
-      setThumbPos(thumbStartLeft + (x - startX));
-    }
-    async function onPointerUp(e){
+      moved = Math.abs(e.clientX - startX);
+      setThumbPos(thumbStartLeft + (e.clientX - startX));
+    });
+
+    thumb.addEventListener('pointerup', async (e) => {
       if(!dragging) return;
       dragging = false;
       thumb.classList.remove('dragging');
-      const x = (e.changedTouches ? e.changedTouches[0].clientX : e.clientX);
-      const moved = Math.abs(x - startX);
       const currentLeft = parseFloat(thumb.style.left || (isOn ? thumbMax() : 4));
       const goOn = moved < 6 ? !isOn : (currentLeft > thumbMax()/2);
       await commitConnect(goOn);
-    }
-
-    thumb.addEventListener('mousedown', onPointerDown);
-    thumb.addEventListener('touchstart', onPointerDown, {passive:false});
-    window.addEventListener('mousemove', onPointerMove);
-    window.addEventListener('touchmove', onPointerMove, {passive:false});
-    window.addEventListener('mouseup', onPointerUp);
-    window.addEventListener('touchend', onPointerUp);
+    });
 
     // click directo en el riel (sin arrastrar) también funciona
     track.addEventListener('click', (e) => {
@@ -1466,7 +1497,34 @@
     connBadge.className = 'connPill warn';
   }
 
-  render();
+  async function boot(){
+    const remembered = supa ? getRememberedAccount() : null;
+    if(remembered && remembered.role === 'conductor'){
+      const { data } = await supa.from('drivers').select('*').eq('phone', remembered.phone).maybeSingle();
+      if(data){
+        session.role = 'conductor';
+        session.driverId = data.id;
+        session.driverName = data.name;
+        session.driverPhone = data.phone;
+        session.driverBrand = data.brand;
+        session.driverModel = data.model;
+        session.driverColor = data.color;
+        session.driverPlate = data.plate;
+        session.driverStatus = data.status;
+        return render();
+      }
+    } else if(remembered && remembered.role === 'pasajero'){
+      const { data } = await supa.from('passengers').select('*').eq('phone', remembered.phone).maybeSingle();
+      if(data){
+        session.role = 'pasajero';
+        session.passengerName = data.name;
+        session.passengerPhone = data.phone;
+        return render();
+      }
+    }
+    render();
+  }
+  boot();
 })();
 </script>
 </body>
