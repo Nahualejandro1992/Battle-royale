@@ -506,22 +506,39 @@
   }
 
   // ================= RECORDAR CUENTA (para no volver a elegir pasajero/conductor cada vez) =================
-  function rememberAccount(role, phone){
-    try{
-      localStorage.setItem('sordogo_role', role);
-      localStorage.setItem('sordogo_phone', phone);
-    } catch(e){ /* si el navegador bloquea storage, la app sigue andando igual, solo no recuerda */ }
+  function storageSet(key, value){
+    try{ localStorage.setItem(key, value); } catch(e){}
+    try{ document.cookie = `${key}=${encodeURIComponent(value)};max-age=31536000;path=/`; } catch(e){}
   }
-  function getRememberedAccount(){
+  function storageGet(key){
     try{
-      const role = localStorage.getItem('sordogo_role');
-      const phone = localStorage.getItem('sordogo_phone');
-      if(role && phone) return { role, phone };
+      const v = localStorage.getItem(key);
+      if(v) return v;
+    } catch(e){}
+    try{
+      const match = document.cookie.match(new RegExp('(?:^|; )'+key+'=([^;]*)'));
+      if(match) return decodeURIComponent(match[1]);
     } catch(e){}
     return null;
   }
+  function storageRemove(key){
+    try{ localStorage.removeItem(key); } catch(e){}
+    try{ document.cookie = `${key}=;max-age=0;path=/`; } catch(e){}
+  }
+
+  function rememberAccount(role, phone){
+    storageSet('sordogo_role', role);
+    storageSet('sordogo_phone', phone);
+  }
+  function getRememberedAccount(){
+    const role = storageGet('sordogo_role');
+    const phone = storageGet('sordogo_phone');
+    if(role && phone) return { role, phone };
+    return null;
+  }
   function forgetAccount(){
-    try{ localStorage.removeItem('sordogo_role'); localStorage.removeItem('sordogo_phone'); } catch(e){}
+    storageRemove('sordogo_role');
+    storageRemove('sordogo_phone');
   }
 
   // ================= MAPA (Leaflet, limitado a CABA) =================
@@ -1700,6 +1717,54 @@
     };
   }
 
+  async function renderDriverProfileView(){
+    stageContent.innerHTML = `
+      <div style="padding:30px 4px 0;">
+        <div style="font-size:22px;font-weight:600;">Tu perfil</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-top:6px;">Así te ven los pasajeros</div>
+      </div>
+    `;
+    main.innerHTML = `
+      <div class="backLink" id="back">← volver</div>
+
+      <div class="card" style="text-align:center;padding:28px 20px;">
+        ${session.driverPhoto
+          ? `<img src="${session.driverPhoto}" alt="" style="width:96px;height:96px;border-radius:50%;object-fit:cover;margin-bottom:14px;border:3px solid var(--accent-dim);">`
+          : `<div class="avatar" style="width:96px;height:96px;font-size:32px;margin:0 auto 14px;">${initials(session.driverName)}</div>`
+        }
+        <div style="font-size:20px;font-weight:700;">${escapeHtml(session.driverName)}</div>
+        <div id="profileRatingArea" style="margin-top:6px;font-size:13px;color:var(--text-faint);">cargando estrellas...</div>
+        <div id="profileTripsArea" style="margin-top:4px;font-size:12px;color:var(--text-faint);"></div>
+      </div>
+
+      ${session.driverCarPhoto ? `<img src="${session.driverCarPhoto}" alt="Tu auto" style="width:100%;border-radius:var(--radius-md);margin-bottom:14px;max-height:200px;object-fit:cover;">` : ''}
+
+      <div class="card">
+        <div class="sectionLabel" style="margin-top:0;">Tu vehículo</div>
+        <div class="carMeta" style="margin-top:6px;">
+          ${colorDot(session.driverColor)}
+          <span class="carMetaText" style="font-size:14px;">${escapeHtml(session.driverBrand||'Sin marca')} ${escapeHtml(session.driverModel||'')}</span>
+        </div>
+        <div style="margin-top:12px;">${plateBadge(session.driverPlate)}</div>
+      </div>
+
+      <button class="btn secondary" id="goEdit">Editar perfil</button>
+    `;
+    document.getElementById('back').onclick = () => renderDriverDashboard();
+    document.getElementById('goEdit').onclick = () => renderDriverEditProfile();
+
+    if(supa && session.driverId){
+      getDriverRatingSummary(session.driverId).then(summary => {
+        const el = document.getElementById('profileRatingArea');
+        if(el) el.innerHTML = summary ? ratingBadgeHtml(summary.avg, summary.count) : 'Todavía sin calificaciones';
+      });
+      supa.from('rides').select('id', {count:'exact', head:true}).eq('driver_id', session.driverId).eq('status','completado').then(({count}) => {
+        const el = document.getElementById('profileTripsArea');
+        if(el) el.textContent = `${count||0} viaje${count===1?'':'s'} completado${count===1?'':'s'}`;
+      });
+    }
+  }
+
   function renderDriverEditProfile(){
     stageContent.innerHTML = `
       <div style="padding:30px 4px 0;">
@@ -1743,7 +1808,7 @@
 
       <button class="btn" id="saveProfile">Guardar perfil</button>
     `;
-    document.getElementById('back').onclick = () => renderDriverDashboard();
+    document.getElementById('back').onclick = () => renderDriverProfileView();
 
     let newProfileFile = null, newCarFile = null;
     document.getElementById('ePhotoProfile').addEventListener('change', e => {
@@ -1783,7 +1848,7 @@
       session.driverPhoto = newPhotoUrl;
       session.driverCarPhoto = newCarPhotoUrl;
       vibrate([15,30,15]);
-      renderDriverDashboard();
+      renderDriverProfileView();
     };
   }
 
@@ -1801,13 +1866,13 @@
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
           <div class="backLink" id="historyLinkDriver" style="margin:0;">tus viajes</div>
-          <div class="backLink" id="editProfileLink" style="margin:0;">editar perfil</div>
+          <div class="backLink" id="editProfileLink" style="margin:0;">ver perfil</div>
           <div class="backLink" id="logoutDriver" style="margin:0;">cambiar cuenta</div>
         </div>
       </div>
     `;
     document.getElementById('historyLinkDriver').onclick = () => renderTripHistory('conductor');
-    document.getElementById('editProfileLink').onclick = () => renderDriverEditProfile();
+    document.getElementById('editProfileLink').onclick = () => renderDriverProfileView();
     document.getElementById('logoutDriver').onclick = () => {
       forgetAccount();
       session = { ...session, role:null, driverId:null, driverName:'', driverPhone:'', driverBrand:'', driverModel:'', driverColor:'', driverPlate:'', driverStatus:'offline' };
