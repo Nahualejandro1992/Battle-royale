@@ -155,6 +155,18 @@
 
   /* ===== AVAILABILITY SWITCH ===== */
   .availCard{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:18px 20px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+
+  /* ===== BOTONES RÁPIDOS DEL HEADER (conductor) ===== */
+  .quickActionsRow{display:flex;gap:8px;padding:14px 4px 0;}
+  .quickActionBtn{flex:1;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 6px;text-align:center;font-size:11.5px;font-weight:600;color:var(--text-dim);cursor:pointer;}
+  .quickActionBtn:active{transform:scale(.96);border-color:var(--accent-dim);}
+  .quickActionBtn .qaIcon{display:block;font-size:18px;margin-bottom:4px;}
+
+  /* ===== RESUMEN DEL DÍA (aprovecha el espacio libre bajo el slider) ===== */
+  .todayStatsRow{display:flex;gap:8px;margin:14px 0 4px;}
+  .todayStat{flex:1;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 8px;text-align:center;}
+  .todayStatVal{font-size:18px;font-weight:800;font-family:'Space Grotesk';color:var(--text);}
+  .todayStatLabel{font-size:10.5px;color:var(--text-faint);margin-top:3px;text-transform:uppercase;letter-spacing:.3px;}
   .availText{display:flex;align-items:center;gap:10px;}
   /* ===== LED animado para los 3 estados del conductor (llamar la atención sin sonido) ===== */
   .ledDot{width:11px;height:11px;border-radius:50%;position:relative;flex-shrink:0;display:inline-block;}
@@ -239,19 +251,23 @@
   .avatarPhoto img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
 
   /* ===== BANNER DE PERFIL CON PARTÍCULAS ===== */
-  .profileBanner{position:relative;overflow:hidden;padding:32px 20px !important;}
+  .profileBanner{position:relative;overflow:hidden;padding:36px 20px !important;}
   .profileBanner::before{
-    content:'';position:absolute;inset:0;
-    background:radial-gradient(circle at 50% 30%, rgba(215,181,109,.14), transparent 65%);
+    content:'';position:absolute;inset:-40%;
+    background:conic-gradient(from 0deg, rgba(75,123,255,.16), rgba(215,181,109,.18), rgba(62,207,126,.1), rgba(75,123,255,.16));
+    animation:bannerSwirl 14s linear infinite;
     pointer-events:none;
+    filter:blur(30px);
   }
   .particleLayer{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0;}
   .particle{position:absolute;bottom:-10px;border-radius:50%;opacity:0;animation:particleFloat linear infinite;}
+  @keyframes bannerSwirl{ 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
   @keyframes particleFloat{
-    0%{ transform:translateY(0) translateX(0) scale(1); opacity:0; }
+    0%{ transform:translateY(0) translateX(0) scale(1) rotate(0deg); opacity:0; }
     12%{ opacity:1; }
+    50%{ transform:translateY(-90px) translateX(calc(var(--drift,12px) * .5)) scale(1.15) rotate(180deg); }
     88%{ opacity:.7; }
-    100%{ transform:translateY(-180px) translateX(var(--drift,12px)) scale(.4); opacity:0; }
+    100%{ transform:translateY(-190px) translateX(var(--drift,12px)) scale(.4) rotate(360deg); opacity:0; }
   }
   .profileBanner > *{position:relative;z-index:1;}
 
@@ -267,6 +283,14 @@
   .starBtn{font-size:34px;color:var(--border);cursor:pointer;transition:color .15s, transform .1s;line-height:1;}
   .starBtn:active{transform:scale(.85);}
   .starBtn.filled{color:var(--gold);}
+
+  /* ===== TARJETA DE VEHÍCULO CON PLACA ANIMADA ===== */
+  .vehiclePlateCard{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;margin-bottom:12px;}
+  .vehiclePlateGlow{display:inline-block;margin-top:14px;animation:plateGlow 2.4s ease-in-out infinite;}
+  @keyframes plateGlow{
+    0%,100%{ filter:drop-shadow(0 0 0px rgba(215,181,109,0)); transform:scale(1); }
+    50%{ filter:drop-shadow(0 0 10px rgba(215,181,109,.55)); transform:scale(1.03); }
+  }
 
   /* ===== PATENTE ESTILO CHAPA REAL ===== */
   .plateBadge{display:inline-flex;align-items:center;background:#f2f2ee;color:#0c0c0e;font-family:'Space Grotesk',monospace;font-weight:700;font-size:13px;letter-spacing:1.5px;padding:4px 10px;border-radius:4px;border:2px solid #0c0c0e;box-shadow:0 1px 0 rgba(255,255,255,.4) inset;}
@@ -1764,7 +1788,7 @@
   async function renderDriverProfileView(){
     stageContent.innerHTML = `
       <div style="padding:30px 4px 0;">
-        <div style="font-size:22px;font-weight:600;">Tu perfil</div>
+        <div class="display" style="font-size:25px;font-weight:700;letter-spacing:-.3px;">Tu perfil</div>
         <div style="font-size:13px;color:var(--text-dim);margin-top:6px;">Así te ven los pasajeros</div>
       </div>
     `;
@@ -1774,30 +1798,30 @@
       <div class="card profileBanner" style="text-align:center;">
         <div class="particleLayer" id="particleLayer"></div>
         ${session.driverPhoto
-          ? `<img src="${session.driverPhoto}" alt="" style="width:96px;height:96px;border-radius:50%;object-fit:cover;margin-bottom:14px;border:3px solid var(--accent-dim);">`
-          : `<div class="avatar" style="width:96px;height:96px;font-size:32px;margin:0 auto 14px;">${initials(session.driverName)}</div>`
+          ? `<img src="${session.driverPhoto}" alt="" style="width:124px;height:124px;border-radius:50%;object-fit:cover;margin-bottom:16px;border:3px solid var(--accent-dim);box-shadow:0 0 30px rgba(75,123,255,.25);">`
+          : `<div class="avatar" style="width:124px;height:124px;font-size:40px;margin:0 auto 16px;">${initials(session.driverName)}</div>`
         }
-        <div style="font-size:20px;font-weight:700;">${escapeHtml(session.driverName)}</div>
-        <div id="profileRatingArea" style="margin-top:6px;font-size:13px;color:var(--text-faint);">cargando estrellas...</div>
-        <div id="profileTripsArea" style="margin-top:4px;font-size:12px;color:var(--text-faint);"></div>
+        <div class="display" style="font-size:24px;font-weight:700;letter-spacing:-.3px;">${escapeHtml(session.driverName)}</div>
+        <div id="profileRatingArea" style="margin-top:8px;font-size:14px;color:var(--text-faint);">cargando estrellas...</div>
+        <div id="profileTripsArea" style="margin-top:4px;font-size:12.5px;color:var(--text-faint);"></div>
       </div>
 
-      ${session.driverCarPhoto ? `<img src="${session.driverCarPhoto}" alt="Tu auto" style="width:100%;border-radius:var(--radius-md);margin-bottom:14px;max-height:200px;object-fit:cover;">` : ''}
+      ${session.driverCarPhoto ? `<img src="${session.driverCarPhoto}" alt="Tu auto" style="width:100%;border-radius:var(--radius-md);margin-bottom:14px;max-height:220px;object-fit:cover;">` : ''}
 
-      <div class="card">
+      <div class="vehiclePlateCard">
         <div class="sectionLabel" style="margin-top:0;">Tu vehículo</div>
-        <div class="carMeta" style="margin-top:6px;">
+        <div class="carMeta" style="margin-top:8px;">
           ${colorDot(session.driverColor)}
-          <span class="carMetaText" style="font-size:14px;">${escapeHtml(session.driverBrand||'Sin marca')} ${escapeHtml(session.driverModel||'')}</span>
+          <span class="carMetaText" style="font-size:15px;font-weight:600;color:var(--text);">${escapeHtml(session.driverBrand||'Sin marca')} ${escapeHtml(session.driverModel||'')}</span>
         </div>
-        <div style="margin-top:12px;">${plateBadge(session.driverPlate)}</div>
+        <div class="vehiclePlateGlow">${plateBadge(session.driverPlate)}</div>
       </div>
 
       <button class="btn secondary" id="goEdit">Editar perfil</button>
     `;
     document.getElementById('back').onclick = () => renderDriverDashboard();
     document.getElementById('goEdit').onclick = () => renderDriverEditProfile();
-    spawnParticles('particleLayer', 22);
+    spawnParticles('particleLayer', 34);
 
     if(supa && session.driverId){
       getDriverRatingSummary(session.driverId).then(summary => {
@@ -1900,21 +1924,21 @@
 
   function renderDriverDashboard(){
     stageContent.innerHTML = `
-      <div style="padding:30px 4px 0;display:flex;align-items:center;gap:12px;">
-        ${avatarHtml(session.driverName, session.driverPhoto, 'width:46px;height:46px;font-size:16px;')}
+      <div style="padding:26px 4px 0;display:flex;align-items:center;gap:12px;">
+        ${avatarHtml(session.driverName, session.driverPhoto, 'width:50px;height:50px;font-size:17px;')}
         <div style="flex:1;">
-          <div style="font-size:16px;font-weight:600;">${escapeHtml(session.driverName)}</div>
+          <div style="font-size:17px;font-weight:700;">${escapeHtml(session.driverName)}</div>
           <div class="carMeta" style="margin-top:4px;">
             ${colorDot(session.driverColor)}
             <span class="carMetaText">${escapeHtml(session.driverBrand)} ${escapeHtml(session.driverModel)}</span>
             ${plateBadge(session.driverPlate, true)}
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-          <div class="backLink" id="historyLinkDriver" style="margin:0;">tus viajes</div>
-          <div class="backLink" id="editProfileLink" style="margin:0;">ver perfil</div>
-          <div class="backLink" id="logoutDriver" style="margin:0;">cambiar cuenta</div>
-        </div>
+      </div>
+      <div class="quickActionsRow">
+        <div class="quickActionBtn" id="historyLinkDriver"><span class="qaIcon">📋</span>Tus viajes</div>
+        <div class="quickActionBtn" id="editProfileLink"><span class="qaIcon">👤</span>Ver perfil</div>
+        <div class="quickActionBtn" id="logoutDriver"><span class="qaIcon">🚪</span>Cambiar cuenta</div>
       </div>
     `;
     document.getElementById('historyLinkDriver').onclick = () => renderTripHistory('conductor');
@@ -1941,11 +1965,32 @@
           <div class="connectThumb" id="connectThumb">${isOn ? '✓' : '🚗'}</div>
         </div>
       </div>
+      <div class="todayStatsRow" id="todayStatsRow">
+        <div class="todayStat"><div class="todayStatVal" id="statTripsToday">···</div><div class="todayStatLabel">Viajes hoy</div></div>
+        <div class="todayStat"><div class="todayStatVal" id="statEarnedToday">···</div><div class="todayStatLabel">Ganado hoy</div></div>
+        <div class="todayStat"><div class="todayStatVal" id="statRatingMini">···</div><div class="todayStatLabel">Calificación</div></div>
+      </div>
       <div id="driverContent"></div>
     `;
     setupConnectSlider(isOn, canToggle);
     renderDriverContent();
     subscribeToPendingRides();
+    loadTodayStats();
+  }
+
+  async function loadTodayStats(){
+    if(!supa || !session.driverId) return;
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const { data } = await supa.from('rides').select('estimated_fare, rating').eq('driver_id', session.driverId).eq('status','completado').gte('created_at', todayStart.toISOString());
+    const trips = data ? data.length : 0;
+    const earned = data ? data.reduce((s,r)=>s+(r.estimated_fare||0),0) : 0;
+    const tripsEl = document.getElementById('statTripsToday');
+    const earnedEl = document.getElementById('statEarnedToday');
+    if(tripsEl) tripsEl.textContent = trips;
+    if(earnedEl) earnedEl.textContent = money(earned);
+    const summary = await getDriverRatingSummary(session.driverId);
+    const ratingEl = document.getElementById('statRatingMini');
+    if(ratingEl) ratingEl.textContent = summary ? '★ '+summary.avg.toFixed(1) : '—';
   }
 
   function setupConnectSlider(isOn, canToggle){
@@ -2200,8 +2245,11 @@
     driversChannel = supa.channel('pending-rides')
       .on('postgres_changes', { event:'INSERT', schema:'public', table:'rides' }, (payload) => {
         const ride = payload.new;
-        if(ride.driver_id === session.driverId && ride.status === 'pendiente' && ride.is_private){
-          showUrgentRequestOverlay(ride);
+        if(ride.status !== 'pendiente') return;
+        const isForMe = ride.driver_id === session.driverId; // pedido privado dirigido a mí
+        const isOpenPool = !ride.driver_id && session.driverStatus === 'disponible'; // pedido abierto y estoy conectado
+        if(isForMe || isOpenPool){
+          showUrgentRequestOverlay(ride, isForMe);
         }
       })
       .on('postgres_changes', { event:'*', schema:'public', table:'rides' }, () => {
@@ -2212,24 +2260,30 @@
       .subscribe();
   }
 
-  // Aviso urgente pantalla completa para pedidos privados dirigidos a este conductor (como Uber)
-  function showUrgentRequestOverlay(ride){
+  // Aviso urgente pantalla completa para CUALQUIER pedido nuevo (privado o abierto) mientras estás conectado (como Uber)
+  function showUrgentRequestOverlay(ride, isPrivate){
     if(session.activeRideId) return; // ya tiene un viaje activo, no lo interrumpo
+    if(session.driverStatus !== 'disponible' && !isPrivate) return; // si no está disponible, solo interrumpe si es privado directo
     const existing = document.getElementById('urgentOverlay');
     if(existing) existing.remove();
 
     const overlay = document.createElement('div');
     overlay.id = 'urgentOverlay';
     overlay.className = 'urgentOverlay';
+    const km = ride.distance_km ? ride.distance_km.toFixed(1) : null;
     overlay.innerHTML = `
       <div class="urgentCard">
-        <div class="urgentBadge">🌟 PEDIDO PRIVADO</div>
+        <div class="urgentBadge">${isPrivate ? '🌟 PEDIDO PRIVADO' : '🚕 NUEVO PEDIDO'}</div>
         <div class="urgentTimer" id="urgentTimer">20</div>
         ${avatarHtml(ride.passenger_name, null)}
         <div class="urgentName">${escapeHtml(ride.passenger_name)}</div>
+        <div class="mapWrap" style="margin:12px 0;"><div class="mapStatic" id="urgentMap" style="height:170px;"></div></div>
         ${routeStrip(ride.pickup, ride.dropoff)}
         <div class="goldBadge">💰 Seña ${money(ride.deposit_amount)} · ${ride.deposit_method}</div>
-        ${ride.estimated_fare ? `<div style="font-size:15px;font-weight:700;margin-top:10px;">Viaje estimado: ${money(ride.estimated_fare)}</div>` : ''}
+        <div style="display:flex;justify-content:center;gap:16px;margin-top:10px;">
+          ${km ? `<div style="font-size:13px;color:var(--text-dim);">📏 ${km} km</div>` : ''}
+          ${ride.estimated_fare ? `<div style="font-size:15px;font-weight:700;">${money(ride.estimated_fare)}</div>` : ''}
+        </div>
         <div style="display:flex;gap:10px;margin-top:20px;">
           <button class="btn danger" id="declineUrgent" style="flex:1;">Rechazar</button>
           <button class="btn success" id="acceptUrgent" style="flex:1;">Aceptar</button>
@@ -2238,6 +2292,11 @@
     `;
     document.body.appendChild(overlay);
     vibrate([30,80,30,80,30]);
+
+    const mapEl = document.getElementById('urgentMap');
+    if(mapEl && ride.pickup_lat && ride.pickup_lng){
+      initStaticMap('urgentMap', ride.pickup_lat, ride.pickup_lng, ride.dropoff_lat, ride.dropoff_lng);
+    }
 
     let secondsLeft = 20;
     const timerEl = document.getElementById('urgentTimer');
