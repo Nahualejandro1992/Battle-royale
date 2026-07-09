@@ -477,34 +477,60 @@
     return Math.round((usd * rate)/50)*50;
   }
 
-  // ================= RECARGO POR DEMANDA (noche/madrugada + lluvia, como Uber) =================
-  const SURGE_NIGHT_MULTIPLIER = 1.20; // +20% de 22:00 a 6:00
-  const SURGE_RAIN_MULTIPLIER = 1.25;  // +25% si está lloviendo en la zona
+  // ================= DEMANDA REAL (clima detallado + hora, multiplicador tipo Uber) =================
+  const WEATHER_INFO = {
+    clear:   { emoji:'☀️', label:'Despejado', mult:1.00 },
+    cloudy:  { emoji:'☁️', label:'Nublado',   mult:1.00 },
+    fog:     { emoji:'🌫️', label:'Niebla',    mult:1.10 },
+    drizzle: { emoji:'🌦️', label:'Llovizna',  mult:1.15 },
+    rain:    { emoji:'🌧️', label:'Lluvia',    mult:1.25 },
+    storm:   { emoji:'⛈️', label:'Tormenta',  mult:1.40 }
+  };
 
-  function isNightSurgeTime(){
-    const h = new Date().getHours();
-    return h >= 22 || h < 6;
+  function classifyWeatherCode(code){
+    if(code === 0) return 'clear';
+    if(code <= 3) return 'cloudy';
+    if(code === 45 || code === 48) return 'fog';
+    if(code >= 51 && code <= 57) return 'drizzle';
+    if((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return 'rain';
+    if(code >= 95) return 'storm';
+    return 'cloudy';
   }
 
-  // Clima en vivo (gratis, sin key) para saber si está lloviendo en el punto de origen
-  async function isRainingAt(lat, lng){
+  // Multiplicador por hora del día (madrugada/noche > pico tarde > resto)
+  function getTimeMultiplier(){
+    const h = new Date().getHours();
+    if(h >= 22 || h < 6) return 1.20;   // madrugada/noche
+    if(h >= 18 && h < 22) return 1.10;  // pico tarde/noche
+    return 1.00;
+  }
+
+  // Clima real en vivo (gratis, sin key)
+  async function getWeatherInfo(lat, lng){
     try{
       const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=precipitation,weather_code`;
       const res = await fetch(url);
       const data = await res.json();
-      const precip = data?.current?.precipitation ?? 0;
       const code = data?.current?.weather_code ?? 0;
-      // códigos 51-67, 80-82, 95-99 = lluvia/tormenta en el estándar de Open-Meteo
-      const rainCode = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || (code >= 95 && code <= 99);
-      return precip > 0 || rainCode;
-    } catch(e){ console.warn('No se pudo consultar el clima:', e); return false; }
+      const key = classifyWeatherCode(code);
+      return { key, ...WEATHER_INFO[key] };
+    } catch(e){ console.warn('No se pudo consultar el clima:', e); return { key:'clear', ...WEATHER_INFO.clear }; }
   }
 
-  function applySurge(fare, isNight, isRaining){
-    let multiplier = 1;
-    if(isNight) multiplier *= SURGE_NIGHT_MULTIPLIER;
-    if(isRaining) multiplier *= SURGE_RAIN_MULTIPLIER;
-    return Math.round((fare * multiplier)/50)*50;
+  // Combina hora + clima real en un solo multiplicador (ej: x1.23), con nivel y color para el mapa
+  async function getDemandMultiplier(lat, lng){
+    const timeMult = getTimeMultiplier();
+    const weather = await getWeatherInfo(lat, lng);
+    const multiplier = Math.round(timeMult * weather.mult * 100) / 100;
+    let level, color;
+    if(multiplier >= 1.35){ level='alta'; color='#ef5b6b'; }
+    else if(multiplier > 1.05){ level='media'; color='#a86bd7'; }
+    else { level='baja'; color='#4b7bff'; }
+    return { multiplier, timeMult, weather, level, color };
+  }
+
+  function applyDemandMultiplier(amount, multiplier){
+    return Math.round((amount * multiplier)/50)*50;
   }
 
   // Ruta real por calles (motor de ruteo público OSRM, gratis, sin key).
@@ -1047,20 +1073,11 @@
       .subscribe();
   }
 
-  // ================= DEMANDA (nube de color según hora/lluvia, como el mapa de Uber) =================
+  // ================= DEMANDA (nube de color, ahora con clima real detallado) =================
   async function getDemandInfo(){
-    const isNight = isNightSurgeTime();
-    let raining = false;
-    try{ raining = await isRainingAt(CABA_CENTER[0], CABA_CENTER[1]); } catch(e){}
-    let level, color, label, multiplier;
-    if(isNight && raining){
-      level='alta'; color='#ef5b6b'; label='Demanda alta'; multiplier = SURGE_NIGHT_MULTIPLIER*SURGE_RAIN_MULTIPLIER;
-    } else if(isNight || raining){
-      level='media'; color='#a86bd7'; label='Demanda media'; multiplier = isNight ? SURGE_NIGHT_MULTIPLIER : SURGE_RAIN_MULTIPLIER;
-    } else {
-      level='baja'; color='#4b7bff'; label='Demanda baja'; multiplier = 1;
-    }
-    return { level, color, label, multiplier, isNight, raining };
+    const d = await getDemandMultiplier(CABA_CENTER[0], CABA_CENTER[1]);
+    const label = d.level === 'alta' ? 'Demanda alta' : d.level === 'media' ? 'Demanda media' : 'Demanda baja';
+    return { level: d.level, color: d.color, label, multiplier: d.multiplier, weather: d.weather };
   }
 
   let fleetMap = null, fleetMarkers = {}, fleetChannel = null;
@@ -1113,7 +1130,7 @@
 
     const badge = document.getElementById('demandBadge');
     if(badge){
-      badge.innerHTML = `<span class="demandDot" style="background:${demand.color};"></span>${demand.label} · x${demand.multiplier.toFixed(2)}`;
+      badge.innerHTML = `<span class="demandDot" style="background:${demand.color};"></span>${demand.weather ? demand.weather.emoji+' ' : ''}${demand.label} · x${demand.multiplier.toFixed(2)}`;
       badge.style.borderColor = demand.color;
     }
 
@@ -1420,44 +1437,40 @@
         let baseFare = estimateFare(km);
         const isPrivate = !!session.targetDriver;
         if(isPrivate) baseFare = Math.round(baseFare * VIP_SURCHARGE_MULTIPLIER / 50)*50;
+        const baseServiceFee = estimateServiceFee(km);
 
-        const isNight = isNightSurgeTime();
-        let fare = applySurge(baseFare, isNight, false); // primero sin lluvia, se corrige abajo si corresponde
-        session._estimatedFare = fare;
-        session._estimatedKm = km;
-        const serviceFee = estimateServiceFee(km);
-        session._serviceFee = serviceFee;
-        const feeDisplay = document.getElementById('serviceFeeDisplay');
-        if(feeDisplay) feeDisplay.textContent = money(serviceFee);
+        function renderPriceCard(fare, serviceFee, demand, checking){
+          session._estimatedFare = fare;
+          session._estimatedKm = km;
+          session._serviceFee = serviceFee;
+          const feeDisplay = document.getElementById('serviceFeeDisplay');
+          if(feeDisplay) feeDisplay.textContent = money(serviceFee);
 
-        function renderPriceCard(currentFare, isRaining, checkingRain){
-          const surgeReasons = [];
-          if(isNight) surgeReasons.push('🌙 recargo nocturno');
-          if(isRaining) surgeReasons.push('🌧️ recargo por lluvia');
+          const hasSurge = demand && demand.multiplier > 1.03;
           priceWrap.innerHTML = `
-            <div class="card" style="border-color:${surgeReasons.length ? 'var(--warning)' : 'var(--accent-dim)'};">
+            <div class="card" style="border-color:${hasSurge ? demand.color : 'var(--accent-dim)'};">
               <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div>
                   <div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;font-weight:700;letter-spacing:.3px;">Precio estimado${isPrivate ? ' · Privado 🌟' : ''}</div>
                   <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">${km.toFixed(1)} km ${usingReal ? 'por calles' : '(calculando ruta real...)'}${routeMinutes ? ' · ~'+Math.round(routeMinutes)+' min' : ''}</div>
                 </div>
-                <div style="font-size:24px;font-weight:700;">${money(currentFare)}</div>
+                <div style="font-size:24px;font-weight:700;">${money(fare)}</div>
               </div>
               ${isPrivate ? `<div style="font-size:10.5px;color:var(--gold);margin-top:8px;">Incluye recargo por pedido privado a conductor elegido (+25%)</div>` : ''}
               ${km > LONG_DISTANCE_KM_THRESHOLD ? `<div style="font-size:10.5px;color:var(--gold);margin-top:8px;">Incluye recargo por larga distancia (pasando los ${LONG_DISTANCE_KM_THRESHOLD} km)</div>` : ''}
-              ${surgeReasons.length ? `<div style="font-size:11px;color:var(--warning);margin-top:8px;font-weight:600;">⚡ Demanda alta ahora: ${surgeReasons.join(' · ')}</div>` : ''}
-              ${checkingRain ? `<div style="font-size:10px;color:var(--text-faint);margin-top:4px;">Consultando el clima de la zona...</div>` : ''}
+              ${checking ? `<div style="font-size:11px;color:var(--text-faint);margin-top:8px;">Consultando clima y demanda de la zona...</div>` : ''}
+              ${demand && !checking ? `<div style="font-size:11px;color:${demand.color};margin-top:8px;font-weight:600;">${demand.weather.emoji} ${demand.weather.label} · Demanda ${demand.level} · x${demand.multiplier.toFixed(2)}</div>` : ''}
               <div style="font-size:10.5px;color:var(--text-faint);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">${currentUsdRateLabel || 'Consultando cotización...'}</div>
             </div>
           `;
         }
-        renderPriceCard(fare, false, true);
+        renderPriceCard(baseFare, baseServiceFee, null, true);
 
-        isRainingAt(originData.lat, originData.lng).then(raining => {
+        getDemandMultiplier(originData.lat, originData.lng).then(demand => {
           if(!originData || !destData) return; // el usuario pudo haber reseteado el mapa mientras tanto
-          const finalFare = applySurge(baseFare, isNight, raining);
-          session._estimatedFare = finalFare;
-          renderPriceCard(finalFare, raining, false);
+          const finalFare = applyDemandMultiplier(baseFare, demand.multiplier);
+          const finalServiceFee = applyDemandMultiplier(baseServiceFee, demand.multiplier);
+          renderPriceCard(finalFare, finalServiceFee, demand, false);
         });
       } else {
         confirmBox.classList.remove('show');
@@ -2436,9 +2449,11 @@
   async function loadTodayStats(){
     if(!supa || !session.driverId) return;
     const todayStart = new Date(); todayStart.setHours(0,0,0,0);
-    const { data } = await supa.from('rides').select('estimated_fare, rating').eq('driver_id', session.driverId).eq('status','completado').gte('created_at', todayStart.toISOString());
+    const { data } = await supa.from('rides').select('estimated_fare, deposit_amount, rating, updated_at').eq('driver_id', session.driverId).eq('status','completado').gte('updated_at', todayStart.toISOString());
     const trips = data ? data.length : 0;
-    const earned = data ? data.reduce((s,r)=>s+(r.estimated_fare||0),0) : 0;
+    // Ganado real = el precio total del viaje (la seña es parte de eso, no se suma aparte).
+    // Si por algún viaje viejo no quedó guardado el precio, usamos la seña como piso.
+    const earned = data ? data.reduce((s,r)=> s + (r.estimated_fare || r.deposit_amount || 0), 0) : 0;
     const tripsEl = document.getElementById('statTripsToday');
     const earnedEl = document.getElementById('statEarnedToday');
     if(tripsEl) tripsEl.textContent = trips;
@@ -2572,6 +2587,26 @@
   let driverActiveMap = null, driverActiveMarkers = { origin:null, dest:null, driver:null };
   let driverRideChannel = null;
 
+  async function loadDemandStrip(){
+    const el = document.getElementById('demandStrip');
+    if(!el) return;
+    const demand = await getDemandMultiplier(CABA_CENTER[0], CABA_CENTER[1]);
+    if(!document.getElementById('demandStrip')) return; // la pantalla pudo haber cambiado mientras esperábamos
+    el.style.borderColor = demand.color;
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:24px;">${demand.weather.emoji}</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;">${demand.weather.label}</div>
+            <div style="font-size:11px;color:var(--text-faint);">Demanda ${demand.level} ahora</div>
+          </div>
+        </div>
+        <div style="font-size:20px;font-weight:800;color:${demand.color};font-family:'Space Grotesk';">x${demand.multiplier.toFixed(2)}</div>
+      </div>
+    `;
+  }
+
   function renderDriverContent(){
     const el = document.getElementById('driverContent');
     if(!el) return;
@@ -2606,7 +2641,8 @@
       return;
     }
 
-    el.innerHTML = `<div class="sectionLabel">Pedidos cerca tuyo</div><div id="pendingList"><div class="empty">Buscando pedidos...</div></div>`;
+    el.innerHTML = `<div id="demandStrip" class="card" style="margin-bottom:12px;"><div class="empty" style="padding:10px;">Consultando clima y demanda...</div></div><div class="sectionLabel">Pedidos cerca tuyo</div><div id="pendingList"><div class="empty">Buscando pedidos...</div></div>`;
+    loadDemandStrip();
     loadPendingRides();
   }
 
