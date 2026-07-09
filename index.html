@@ -427,9 +427,13 @@
   // Tarifa fijada en USD (así no se desactualiza con la inflación) y convertida
   // a pesos con la cotización del dólar blue de hoy. Si no se puede consultar,
   // cae a una cotización de referencia fija.
-  const FARE_BASE_USD = 1.2;
-  const FARE_PER_KM_USD = 0.35;
-  const FALLBACK_USD_RATE = 1200; // referencia si falla la consulta en vivo
+  // Calibrado con 4 capturas reales de Uber (madrugada, GBA) el 09/07/2026, dólar blue ~$1510.
+  const FARE_BASE_USD = 3.0;
+  const FARE_PER_KM_USD = 0.26;
+  // Uber cobra mucho más caro pasado los 30km — acá replicamos ese salto.
+  const LONG_DISTANCE_KM_THRESHOLD = 30;
+  const LONG_DISTANCE_EXTRA_USD_PER_KM = 1.0;
+  const FALLBACK_USD_RATE = 1510; // referencia si falla la consulta en vivo
 
   let currentUsdRate = null;
   let currentUsdRateLabel = '';
@@ -459,7 +463,11 @@
 
   function estimateFare(km){
     const rate = currentUsdRate || FALLBACK_USD_RATE;
-    const usd = FARE_BASE_USD + km*FARE_PER_KM_USD;
+    let usd = FARE_BASE_USD + Math.min(km, LONG_DISTANCE_KM_THRESHOLD) * FARE_PER_KM_USD;
+    if(km > LONG_DISTANCE_KM_THRESHOLD){
+      const extraKm = km - LONG_DISTANCE_KM_THRESHOLD;
+      usd += extraKm * (FARE_PER_KM_USD + LONG_DISTANCE_EXTRA_USD_PER_KM);
+    }
     return Math.round((usd * rate)/50)*50;
   }
 
@@ -1307,6 +1315,7 @@
                 <div style="font-size:24px;font-weight:700;">${money(currentFare)}</div>
               </div>
               ${isPrivate ? `<div style="font-size:10.5px;color:var(--gold);margin-top:8px;">Incluye recargo por pedido privado a conductor elegido (+25%)</div>` : ''}
+              ${km > LONG_DISTANCE_KM_THRESHOLD ? `<div style="font-size:10.5px;color:var(--gold);margin-top:8px;">Incluye recargo por larga distancia (pasando los ${LONG_DISTANCE_KM_THRESHOLD} km)</div>` : ''}
               ${surgeReasons.length ? `<div style="font-size:11px;color:var(--warning);margin-top:8px;font-weight:600;">⚡ Demanda alta ahora: ${surgeReasons.join(' · ')}</div>` : ''}
               ${checkingRain ? `<div style="font-size:10px;color:var(--text-faint);margin-top:4px;">Consultando el clima de la zona...</div>` : ''}
               <div style="font-size:10.5px;color:var(--text-faint);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">${currentUsdRateLabel || 'Consultando cotización...'}</div>
