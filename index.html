@@ -145,6 +145,7 @@
   .radar.done .ring{display:none;}
   .statusHeroTitle{font-size:18px;font-weight:600;letter-spacing:-.1px;}
   .statusHeroSub{font-size:12.5px;color:var(--text-dim);margin-top:4px;}
+  .etaBadge{display:inline-block;margin-top:10px;background:var(--accent-dim);color:#cfdcff;font-size:13px;font-weight:700;padding:6px 14px;border-radius:20px;}
 
   /* ===== CARDS ===== */
   .card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:18px;margin-bottom:12px;}
@@ -1717,10 +1718,14 @@
 
   const FOLLOW_ZOOM = 16.5; // qué tan cerca acerca la cámara cuando sigue al auto en curso
   let trackMap = null, trackMarkers = { origin:null, dest:null, driver:null }, trackRouteDrawn = false;
+  let trackPickupETA = null, trackDestETA = null, trackPickupETARequested = false;
+  let trackFullBounds = null, trackWasFollowing = false;
 
   function renderPassengerTracking(){
     trackMap = null; trackMarkers = { origin:null, dest:null, driver:null }; trackRouteDrawn = false;
     trackRouteCoords = null; trackDriverRouteIdx = null; trackFollowActive = false;
+    trackPickupETA = null; trackDestETA = null; trackPickupETARequested = false;
+    trackFullBounds = null; trackWasFollowing = false;
     stageContent.innerHTML = `<div id="statusHeroWrap"></div>`;
     main.innerHTML = `
       <div class="backLink" id="cancelBack">← cancelar y volver</div>
@@ -1760,12 +1765,15 @@
       if(ride.dropoff_lat && ride.dropoff_lng){
         trackMarkers.dest = L.marker([ride.dropoff_lat, ride.dropoff_lng], {icon:pinIcon(true)}).addTo(trackMap);
         const straight = L.polyline([[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]], { color:'#4b7bff', weight:2, dashArray:'2 8', opacity:.6 }).addTo(trackMap);
-        trackMap.fitBounds([[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]], {padding:[30,30]});
+        trackFullBounds = [[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]];
+        trackMap.fitBounds(trackFullBounds, {padding:[30,30]});
         fetchRealRoute(ride.pickup_lat, ride.pickup_lng, ride.dropoff_lat, ride.dropoff_lng).then(route => {
           if(route && trackMap){
             trackMap.removeLayer(straight);
             L.polyline(route.coords, { color:'#4b7bff', weight:4, opacity:.85 }).addTo(trackMap);
             trackRouteCoords = route.coords; // guardamos la ruta real para "pegar" el auto a ella
+            trackDestETA = Math.round(route.minutes);
+            updateETADisplay(ride);
           }
         });
       } else {
@@ -1774,7 +1782,16 @@
       setTimeout(()=> trackMap && trackMap.invalidateSize(), 80);
     }
 
+    // ETA hasta que te vengan a buscar (una sola vez, apenas hay auto asignado)
+    if(!trackPickupETARequested && ride.driver_lat && ride.driver_lng && ride.pickup_lat && ride.pickup_lng && ride.status === 'aceptado'){
+      trackPickupETARequested = true;
+      fetchRealRoute(ride.driver_lat, ride.driver_lng, ride.pickup_lat, ride.pickup_lng).then(route => {
+        if(route){ trackPickupETA = Math.round(route.minutes); updateETADisplay(ride); }
+      });
+    }
+
     // El auto: se crea una vez y de ahí en más solo se MUEVE por la ruta real, nunca se recrea el mapa
+    const followPhase = ride.status === 'aceptado' || ride.status === 'en_curso';
     if(trackMap && ride.driver_lat && ride.driver_lng){
       if(!trackMarkers.driver){
         trackMarkers.driver = L.marker([ride.driver_lat, ride.driver_lng], {icon:carIcon()}).addTo(trackMap);
@@ -1788,8 +1805,9 @@
         trackMarkers.driver.setLatLng([ride.driver_lat, ride.driver_lng]);
       }
 
-      // Apenas arranca el viaje en curso, la cámara se acerca y sigue al auto de cerca (como Uber)
-      if(ride.status === 'en_curso'){
+      // Mientras te vienen a buscar Y mientras te llevan: cámara cerca siguiendo al auto (como Uber)
+      if(followPhase){
+        trackWasFollowing = true;
         if(!trackFollowActive){
           trackFollowActive = true;
           trackMap.setView([ride.driver_lat, ride.driver_lng], FOLLOW_ZOOM, {animate:true});
@@ -1797,6 +1815,27 @@
           trackMap.panTo([ride.driver_lat, ride.driver_lng], {animate:true, duration:1.1, easeLinearity:0.3});
         }
       }
+    }
+
+    // Al completarse, el mapa se aleja y muestra el recorrido entero de nuevo
+    if(ride.status === 'completado' && trackWasFollowing && trackFullBounds){
+      trackWasFollowing = false;
+      trackFollowActive = false;
+      trackMap.flyToBounds(trackFullBounds, {padding:[30,30], animate:true, duration:1.2});
+    }
+  }
+
+  function updateETADisplay(ride){
+    const el = document.getElementById('etaDisplay');
+    if(!el) return;
+    if(ride.status === 'aceptado' && trackPickupETA !== null){
+      el.textContent = `Llega en ~${trackPickupETA} min`;
+      el.classList.remove('hidden');
+    } else if(ride.status === 'en_curso' && trackDestETA !== null){
+      el.textContent = `Llegás en ~${trackDestETA} min`;
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
     }
   }
 
@@ -1832,9 +1871,11 @@
           </div>
           <div class="statusHeroTitle">${statusMeta.title}</div>
           <div class="statusHeroSub">${statusMeta.sub}</div>
+          <div class="etaBadge hidden" id="etaDisplay"></div>
         </div>
       `;
     }
+    updateETADisplay(ride);
 
     statusPillArea.innerHTML = `
       <span class="statusPill ${ride.status}">${ride.status === 'pendiente' ? '<span class="dotBlink"></span>' : ''}${statusMeta.pill}</span>
@@ -2736,6 +2777,7 @@
     if(session.activeRideId){
       driverActiveMap = null; driverActiveMarkers = { origin:null, dest:null, driver:null };
       driverActiveRouteCoords = null; driverActiveRouteIdx = null; driverFollowActive = false;
+      driverActiveFullBounds = null; driverWasFollowing = false;
       el.innerHTML = `
         <div class="card rideCard">
           <div id="driverStatusArea"></div>
@@ -2770,6 +2812,7 @@
   }
 
   let driverActiveRouteCoords = null, driverActiveRouteIdx = null, driverFollowActive = false;
+  let driverActiveFullBounds = null, driverWasFollowing = false;
 
   function updateDriverActiveMap(ride){
     const container = document.getElementById('driverTrackMap');
@@ -2781,7 +2824,8 @@
       if(ride.dropoff_lat && ride.dropoff_lng){
         driverActiveMarkers.dest = L.marker([ride.dropoff_lat, ride.dropoff_lng], {icon:pinIcon(true)}).addTo(driverActiveMap);
         const straight = L.polyline([[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]], { color:'#4b7bff', weight:2, dashArray:'2 8', opacity:.6 }).addTo(driverActiveMap);
-        driverActiveMap.fitBounds([[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]], {padding:[30,30]});
+        driverActiveFullBounds = [[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]];
+        driverActiveMap.fitBounds(driverActiveFullBounds, {padding:[30,30]});
         fetchRealRoute(ride.pickup_lat, ride.pickup_lng, ride.dropoff_lat, ride.dropoff_lng).then(route => {
           if(route && driverActiveMap){
             driverActiveMap.removeLayer(straight);
@@ -2795,6 +2839,7 @@
       setTimeout(()=> driverActiveMap && driverActiveMap.invalidateSize(), 80);
     }
 
+    const followPhase = ride.status === 'aceptado' || ride.status === 'en_curso';
     if(driverActiveMap && ride.driver_lat && ride.driver_lng){
       if(!driverActiveMarkers.driver){
         driverActiveMarkers.driver = L.marker([ride.driver_lat, ride.driver_lng], {icon:carIcon()}).addTo(driverActiveMap);
@@ -2808,7 +2853,8 @@
         driverActiveMarkers.driver.setLatLng([ride.driver_lat, ride.driver_lng]);
       }
 
-      if(ride.status === 'en_curso'){
+      if(followPhase){
+        driverWasFollowing = true;
         if(!driverFollowActive){
           driverFollowActive = true;
           driverActiveMap.setView([ride.driver_lat, ride.driver_lng], FOLLOW_ZOOM, {animate:true});
@@ -2816,6 +2862,12 @@
           driverActiveMap.panTo([ride.driver_lat, ride.driver_lng], {animate:true, duration:1.1, easeLinearity:0.3});
         }
       }
+    }
+
+    if(ride.status === 'completado' && driverWasFollowing && driverActiveFullBounds){
+      driverWasFollowing = false;
+      driverFollowActive = false;
+      driverActiveMap.flyToBounds(driverActiveFullBounds, {padding:[30,30], animate:true, duration:1.2});
     }
   }
 
