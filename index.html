@@ -463,6 +463,36 @@
     return Math.round((usd * rate)/50)*50;
   }
 
+  // ================= RECARGO POR DEMANDA (noche/madrugada + lluvia, como Uber) =================
+  const SURGE_NIGHT_MULTIPLIER = 1.20; // +20% de 22:00 a 6:00
+  const SURGE_RAIN_MULTIPLIER = 1.25;  // +25% si está lloviendo en la zona
+
+  function isNightSurgeTime(){
+    const h = new Date().getHours();
+    return h >= 22 || h < 6;
+  }
+
+  // Clima en vivo (gratis, sin key) para saber si está lloviendo en el punto de origen
+  async function isRainingAt(lat, lng){
+    try{
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=precipitation,weather_code`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const precip = data?.current?.precipitation ?? 0;
+      const code = data?.current?.weather_code ?? 0;
+      // códigos 51-67, 80-82, 95-99 = lluvia/tormenta en el estándar de Open-Meteo
+      const rainCode = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || (code >= 95 && code <= 99);
+      return precip > 0 || rainCode;
+    } catch(e){ console.warn('No se pudo consultar el clima:', e); return false; }
+  }
+
+  function applySurge(fare, isNight, isRaining){
+    let multiplier = 1;
+    if(isNight) multiplier *= SURGE_NIGHT_MULTIPLIER;
+    if(isRaining) multiplier *= SURGE_RAIN_MULTIPLIER;
+    return Math.round((fare * multiplier)/50)*50;
+  }
+
   // Ruta real por calles (motor de ruteo público OSRM, gratis, sin key).
   // Si falla (sin red, servidor caído), devuelve null y quien lo llama cae a línea recta.
   async function fetchRealRoute(lat1, lng1, lat2, lng2){
@@ -1250,28 +1280,47 @@
         confirmBox.classList.add('show');
         const usingReal = routeKm !== null;
         const km = usingReal ? routeKm : distanceKm(originData.lat, originData.lng, destData.lat, destData.lng);
-        let fare = estimateFare(km);
+        let baseFare = estimateFare(km);
         const isPrivate = !!session.targetDriver;
-        if(isPrivate) fare = Math.round(fare * VIP_SURCHARGE_MULTIPLIER / 50)*50;
+        if(isPrivate) baseFare = Math.round(baseFare * VIP_SURCHARGE_MULTIPLIER / 50)*50;
+
+        const isNight = isNightSurgeTime();
+        let fare = applySurge(baseFare, isNight, false); // primero sin lluvia, se corrige abajo si corresponde
         session._estimatedFare = fare;
         session._estimatedKm = km;
         const serviceFee = estimateServiceFee(km);
         session._serviceFee = serviceFee;
         const feeDisplay = document.getElementById('serviceFeeDisplay');
         if(feeDisplay) feeDisplay.textContent = money(serviceFee);
-        priceWrap.innerHTML = `
-          <div class="card" style="border-color:var(--accent-dim);">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <div>
-                <div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;font-weight:700;letter-spacing:.3px;">Precio estimado${isPrivate ? ' · Privado 🌟' : ''}</div>
-                <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">${km.toFixed(1)} km ${usingReal ? 'por calles' : '(calculando ruta real...)'}${routeMinutes ? ' · ~'+Math.round(routeMinutes)+' min' : ''}</div>
+
+        function renderPriceCard(currentFare, isRaining, checkingRain){
+          const surgeReasons = [];
+          if(isNight) surgeReasons.push('🌙 recargo nocturno');
+          if(isRaining) surgeReasons.push('🌧️ recargo por lluvia');
+          priceWrap.innerHTML = `
+            <div class="card" style="border-color:${surgeReasons.length ? 'var(--warning)' : 'var(--accent-dim)'};">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                  <div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;font-weight:700;letter-spacing:.3px;">Precio estimado${isPrivate ? ' · Privado 🌟' : ''}</div>
+                  <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">${km.toFixed(1)} km ${usingReal ? 'por calles' : '(calculando ruta real...)'}${routeMinutes ? ' · ~'+Math.round(routeMinutes)+' min' : ''}</div>
+                </div>
+                <div style="font-size:24px;font-weight:700;">${money(currentFare)}</div>
               </div>
-              <div style="font-size:24px;font-weight:700;">${money(fare)}</div>
+              ${isPrivate ? `<div style="font-size:10.5px;color:var(--gold);margin-top:8px;">Incluye recargo por pedido privado a conductor elegido (+25%)</div>` : ''}
+              ${surgeReasons.length ? `<div style="font-size:11px;color:var(--warning);margin-top:8px;font-weight:600;">⚡ Demanda alta ahora: ${surgeReasons.join(' · ')}</div>` : ''}
+              ${checkingRain ? `<div style="font-size:10px;color:var(--text-faint);margin-top:4px;">Consultando el clima de la zona...</div>` : ''}
+              <div style="font-size:10.5px;color:var(--text-faint);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">${currentUsdRateLabel || 'Consultando cotización...'}</div>
             </div>
-            ${isPrivate ? `<div style="font-size:10.5px;color:var(--gold);margin-top:8px;">Incluye recargo por pedido privado a conductor elegido (+25%)</div>` : ''}
-            <div style="font-size:10.5px;color:var(--text-faint);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">${currentUsdRateLabel || 'Consultando cotización...'}</div>
-          </div>
-        `;
+          `;
+        }
+        renderPriceCard(fare, false, true);
+
+        isRainingAt(originData.lat, originData.lng).then(raining => {
+          if(!originData || !destData) return; // el usuario pudo haber reseteado el mapa mientras tanto
+          const finalFare = applySurge(baseFare, isNight, raining);
+          session._estimatedFare = finalFare;
+          renderPriceCard(finalFare, raining, false);
+        });
       } else {
         confirmBox.classList.remove('show');
         priceWrap.innerHTML = '';
