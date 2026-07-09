@@ -39,6 +39,14 @@
 
   #app{max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;position:relative;}
 
+  /* ===== SPLASH (pantalla de bienvenida al abrir) ===== */
+  #splash{position:fixed;inset:0;z-index:2000;background:radial-gradient(circle at 50% 40%, #15171c, #0c0c0e 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;animation:splashOut .5s ease 1.3s forwards;}
+  .splashLogo{font-family:'Space Grotesk';font-size:38px;font-weight:700;color:var(--text);animation:splashPulse 1.3s ease infinite;}
+  .splashLogo .dot{color:var(--accent);}
+  .splashTag{font-size:13px;color:var(--text-dim);margin-top:10px;letter-spacing:.5px;opacity:0;animation:fadeIn .5s ease .4s forwards;}
+  @keyframes splashPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.06);}}
+  @keyframes splashOut{to{opacity:0;visibility:hidden;pointer-events:none;}}
+
   /* ===== STAGE (zona superior tipo "mapa") ===== */
   .stage{
     background:radial-gradient(circle at 30% 20%, var(--stage-grad-1), var(--stage-grad-2) 70%);
@@ -219,7 +227,7 @@
 
   /* ===== MAPA ===== */
   .mapWrap{border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--border);position:relative;margin-bottom:4px;background:var(--surface-2);}
-  .mapPicker{width:100%;height:340px;}
+  .mapPicker{width:100%;height:400px;}
   .mapStatic{width:100%;height:300px;}
   .mapHint{position:absolute;top:10px;left:10px;right:10px;z-index:400;background:rgba(12,12,14,.82);backdrop-filter:blur(4px);color:var(--text);font-size:12px;font-weight:600;padding:9px 13px;border-radius:20px;text-align:center;pointer-events:none;}
   .leaflet-control-attribution{background:rgba(12,12,14,.7) !important;color:var(--text-faint) !important;font-size:9px !important;}
@@ -248,6 +256,16 @@
   .photoPreview img{width:100%;height:100%;object-fit:cover;}
   .photoPickBtn{width:auto;flex:1;text-align:center;margin:0;padding:12px;}
   .avatarPhoto{padding:0;overflow:hidden;}
+
+  /* ===== ANILLO ANIMADO ALREDEDOR DEL AVATAR (efecto de atracción) ===== */
+  .avatarRing{position:relative;width:130px;height:130px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;}
+  .avatarRing::before{
+    content:'';position:absolute;inset:0;border-radius:50%;
+    background:conic-gradient(from 0deg, var(--accent), var(--gold), var(--success), var(--accent));
+    animation:ringSpin 3.5s linear infinite;
+  }
+  .avatarRing img, .avatarRing .avatar{position:relative;width:120px !important;height:120px !important;border:3px solid var(--surface) !important;z-index:1;}
+  @keyframes ringSpin{ 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
   .avatarPhoto img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
 
   /* ===== BANNER DE PERFIL CON PARTÍCULAS ===== */
@@ -292,6 +310,17 @@
     50%{ filter:drop-shadow(0 0 10px rgba(215,181,109,.55)); transform:scale(1.03); }
   }
 
+  /* ===== CHAT ===== */
+  .chatMessages{display:flex;flex-direction:column;gap:8px;min-height:300px;max-height:52vh;overflow-y:auto;padding:6px 2px 12px;}
+  .chatBubble{max-width:78%;padding:10px 13px;border-radius:16px;font-size:14px;line-height:1.4;}
+  .chatBubble.theirs{align-self:flex-start;background:var(--surface-2);border:1px solid var(--border);border-bottom-left-radius:4px;}
+  .chatBubble.mine{align-self:flex-end;background:var(--accent-dim);color:#eaf0ff;border-bottom-right-radius:4px;}
+  .chatBubbleTime{font-size:10px;color:var(--text-faint);margin-top:4px;text-align:right;}
+  .chatInputRow{display:flex;gap:8px;position:sticky;bottom:0;background:var(--surface);padding-top:8px;}
+  .chatInputRow input{flex:1;}
+
+  .mpAliasCard{display:flex;align-items:center;gap:12px;background:#00b1ea1a;border:1px solid #00b1ea44;border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:12px;}
+
   /* ===== PATENTE ESTILO CHAPA REAL ===== */
   .plateBadge{display:inline-flex;align-items:center;background:#f2f2ee;color:#0c0c0e;font-family:'Space Grotesk',monospace;font-weight:700;font-size:13px;letter-spacing:1.5px;padding:4px 10px;border-radius:4px;border:2px solid #0c0c0e;box-shadow:0 1px 0 rgba(255,255,255,.4) inset;}
   .plateBadge.mini{font-size:11px;padding:3px 8px;}
@@ -321,6 +350,10 @@
 </style>
 </head>
 <body>
+<div id="splash">
+  <div class="splashLogo">Sordo<span class="dot">Go</span></div>
+  <div class="splashTag">Tu viaje, a tu manera</div>
+</div>
 <div id="app">
   <div class="stage">
     <div class="topbar">
@@ -429,7 +462,7 @@
     targetDriver: null, // si el pasajero eligió un conductor específico del directorio
     driverId: null, driverName: '', driverPhone: '',
     driverBrand: '', driverModel: '', driverColor: '', driverPlate: '',
-    driverPhoto: '', driverCarPhoto: '',
+    driverPhoto: '', driverCarPhoto: '', driverMpAlias: '',
     driverStatus: 'offline',
     activeRideId: null
   };
@@ -486,6 +519,80 @@
   }
 
   // ================= HISTORIAL DE VIAJES (como "Actividad" en Uber) =================
+  // ================= CHAT DE TEXTO (reemplaza la llamada, mejor para la comunidad sorda) =================
+  let chatChannel = null;
+
+  async function renderChatScreen(rideId, myRole, otherName){
+    stageContent.innerHTML = `
+      <div style="padding:30px 4px 0;">
+        <div style="font-size:22px;font-weight:600;">💬 ${escapeHtml(otherName||'Chat')}</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-top:6px;">Mensajes de este viaje</div>
+      </div>
+    `;
+    main.innerHTML = `
+      <div class="backLink" id="back">← volver</div>
+      <div id="chatMessages" class="chatMessages"><div class="empty">Cargando mensajes...</div></div>
+      <div class="chatInputRow">
+        <input type="text" id="chatInput" placeholder="Escribí tu mensaje...">
+        <button class="btn" id="chatSendBtn" style="width:auto;padding:14px 20px;">Enviar</button>
+      </div>
+    `;
+    document.getElementById('back').onclick = () => {
+      if(chatChannel){ supa.removeChannel(chatChannel); chatChannel = null; }
+      if(myRole === 'pasajero') renderPassengerTracking();
+      else renderDriverDashboard();
+    };
+
+    await loadChatMessages(rideId);
+
+    if(chatChannel){ supa.removeChannel(chatChannel); chatChannel = null; }
+    chatChannel = supa.channel('chat-'+rideId)
+      .on('postgres_changes', { event:'INSERT', schema:'public', table:'ride_messages', filter:`ride_id=eq.${rideId}` }, (payload) => {
+        appendChatMessage(payload.new, myRole);
+        if(payload.new.sender_role !== myRole) vibrate([15,40,15]);
+      })
+      .subscribe();
+
+    const myName = myRole === 'pasajero' ? session.passengerName : session.driverName;
+    async function send(){
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if(!text) return;
+      input.value = '';
+      await supa.from('ride_messages').insert({
+        ride_id: rideId, sender_role: myRole, sender_name: myName, message: text
+      });
+    }
+    document.getElementById('chatSendBtn').onclick = send;
+    document.getElementById('chatInput').addEventListener('keydown', e => { if(e.key==='Enter') send(); });
+  }
+
+  async function loadChatMessages(rideId){
+    const el = document.getElementById('chatMessages');
+    if(!el || !supa) return;
+    const { data, error } = await supa.from('ride_messages').select('*').eq('ride_id', rideId).order('created_at', {ascending:true});
+    if(error){ el.innerHTML = `<div class="empty">No se pudo cargar el chat.</div>`; return; }
+    if(!data || data.length === 0){ el.innerHTML = `<div class="empty">Todavía no hay mensajes. Escribí el primero 👋</div>`; return; }
+    el.innerHTML = '';
+    data.forEach(m => appendChatMessage(m, null, true));
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function appendChatMessage(msg, myRole, skipScroll){
+    const el = document.getElementById('chatMessages');
+    if(!el) return;
+    if(el.querySelector('.empty')) el.innerHTML = '';
+    const mine = myRole ? msg.sender_role === myRole : false;
+    const bubble = document.createElement('div');
+    bubble.className = 'chatBubble ' + (mine ? 'mine' : 'theirs');
+    bubble.innerHTML = `
+      <div class="chatBubbleText">${escapeHtml(msg.message)}</div>
+      <div class="chatBubbleTime">${new Date(msg.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</div>
+    `;
+    el.appendChild(bubble);
+    if(!skipScroll) el.scrollTop = el.scrollHeight;
+  }
+
   async function renderTripHistory(role){
     stageContent.innerHTML = `
       <div style="padding:30px 4px 0;">
@@ -1344,9 +1451,20 @@
             </div>
           </div>
           ${ride.driver_car_photo_url ? `<img src="${ride.driver_car_photo_url}" alt="Auto del conductor" style="width:100%;border-radius:12px;margin-bottom:12px;max-height:160px;object-fit:cover;">` : ''}
-          ${ride.driver_phone ? `<a href="tel:${escapeHtml(ride.driver_phone)}" class="btn secondary" style="text-decoration:none;">Llamar al conductor</a>` : ''}
+          ${ride.driver_mp_alias ? `
+            <div class="mpAliasCard">
+              <div style="flex:1;">
+                <div style="font-size:10.5px;color:var(--text-faint);text-transform:uppercase;font-weight:700;letter-spacing:.3px;">Transferir por MercadoPago</div>
+                <div style="font-size:15px;font-weight:700;margin-top:3px;">${escapeHtml(ride.driver_mp_alias)}</div>
+              </div>
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=64x64&data=${encodeURIComponent(ride.driver_mp_alias)}" alt="QR" style="width:56px;height:56px;border-radius:8px;background:#fff;padding:4px;">
+            </div>
+          ` : ''}
+          <button class="btn secondary" id="openChatBtn">💬 Mensaje al conductor</button>
         </div>
       `;
+      const chatBtn = document.getElementById('openChatBtn');
+      if(chatBtn) chatBtn.onclick = () => renderChatScreen(ride.id, 'pasajero', ride.driver_name);
       if(ride.driver_id){
         getDriverRatingSummary(ride.driver_id).then(summary => {
           const el = document.getElementById('driverRatingArea');
@@ -1544,6 +1662,7 @@
       driver_color: driver.color,
       driver_photo_url: driver.photo_url,
       driver_car_photo_url: driver.car_photo_url,
+      driver_mp_alias: driver.mp_alias,
       driver_lat: startLat,
       driver_lng: startLng,
       updated_at: new Date().toISOString()
@@ -1641,6 +1760,7 @@
         session.driverPlate = data.plate;
         session.driverPhoto = data.photo_url;
         session.driverCarPhoto = data.car_photo_url;
+        session.driverMpAlias = data.mp_alias;
         session.driverStatus = data.status; // respeta el estado real guardado, no fuerza "disponible"
         rememberAccount('conductor', data.phone);
         vibrate(20);
@@ -1797,10 +1917,12 @@
 
       <div class="card profileBanner" style="text-align:center;">
         <div class="particleLayer" id="particleLayer"></div>
-        ${session.driverPhoto
-          ? `<img src="${session.driverPhoto}" alt="" style="width:124px;height:124px;border-radius:50%;object-fit:cover;margin-bottom:16px;border:3px solid var(--accent-dim);box-shadow:0 0 30px rgba(75,123,255,.25);">`
-          : `<div class="avatar" style="width:124px;height:124px;font-size:40px;margin:0 auto 16px;">${initials(session.driverName)}</div>`
-        }
+        <div class="avatarRing">
+          ${session.driverPhoto
+            ? `<img src="${session.driverPhoto}" alt="" style="border-radius:50%;object-fit:cover;">`
+            : `<div class="avatar" style="font-size:40px;">${initials(session.driverName)}</div>`
+          }
+        </div>
         <div class="display" style="font-size:24px;font-weight:700;letter-spacing:-.3px;">${escapeHtml(session.driverName)}</div>
         <div id="profileRatingArea" style="margin-top:8px;font-size:14px;color:var(--text-faint);">cargando estrellas...</div>
         <div id="profileTripsArea" style="margin-top:4px;font-size:12.5px;color:var(--text-faint);"></div>
@@ -1815,6 +1937,14 @@
           <span class="carMetaText" style="font-size:15px;font-weight:600;color:var(--text);">${escapeHtml(session.driverBrand||'Sin marca')} ${escapeHtml(session.driverModel||'')}</span>
         </div>
         <div class="vehiclePlateGlow">${plateBadge(session.driverPlate)}</div>
+      </div>
+
+      <div class="card">
+        <div class="sectionLabel" style="margin-top:0;">Cobro por transferencia</div>
+        ${session.driverMpAlias
+          ? `<div style="font-size:15px;font-weight:700;margin-top:6px;">💳 ${escapeHtml(session.driverMpAlias)}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:4px;">Así lo ven los pasajeros para transferirte</div>`
+          : `<div style="font-size:13px;color:var(--text-faint);margin-top:6px;">Todavía no cargaste tu alias de MercadoPago. Sumalo en "Editar perfil".</div>`
+        }
       </div>
 
       <button class="btn secondary" id="goEdit">Editar perfil</button>
@@ -1876,6 +2006,10 @@
         </div>
       </div>
 
+      <label>Alias o CVU de MercadoPago</label>
+      <input type="text" id="eMpAlias" value="${escapeHtml(session.driverMpAlias||'')}" placeholder="tu.alias.mp">
+      <p style="font-size:11.5px;color:var(--text-faint);line-height:1.5;margin:6px 0 4px;">El pasajero lo va a ver para transferirte directo. Esto no cobra automático, es solo para mostrar tus datos de forma clara.</p>
+
       <button class="btn" id="saveProfile">Guardar perfil</button>
     `;
     document.getElementById('back').onclick = () => renderDriverProfileView();
@@ -1904,9 +2038,10 @@
       const model = document.getElementById('eModel').value.trim();
       const color = document.getElementById('eColor').value;
       const plate = document.getElementById('ePlate').value.trim().toUpperCase();
+      const mpAlias = document.getElementById('eMpAlias').value.trim();
 
       const { error } = await supa.from('drivers').update({
-        brand, model, color, plate, photo_url:newPhotoUrl, car_photo_url:newCarPhotoUrl
+        brand, model, color, plate, photo_url:newPhotoUrl, car_photo_url:newCarPhotoUrl, mp_alias:mpAlias
       }).eq('id', session.driverId);
 
       if(error){ alert('No se pudo guardar: ' + error.message); btn.disabled=false; btn.textContent='Guardar perfil'; return; }
@@ -1917,6 +2052,7 @@
       session.driverPlate = plate;
       session.driverPhoto = newPhotoUrl;
       session.driverCarPhoto = newCarPhotoUrl;
+      session.driverMpAlias = mpAlias;
       vibrate([15,30,15]);
       renderDriverProfileView();
     };
@@ -2119,6 +2255,7 @@
       driver_color: session.driverColor,
       driver_photo_url: session.driverPhoto,
       driver_car_photo_url: session.driverCarPhoto,
+      driver_mp_alias: session.driverMpAlias,
       updated_at: new Date().toISOString()
     }).eq('id', rideId).eq('status','pendiente').select().single();
 
@@ -2191,9 +2328,13 @@
         <div class="goldBadge">💰 Seña ${money(ride.deposit_amount)} · ${ride.deposit_method}</div>
         <div style="font-size:11.5px;color:var(--text-faint);margin-top:8px;">El pasajero paga aparte un cargo de servicio de ${money(ride.service_fee || 0)} (no es para vos, es de la app)</div>
         ${ride.estimated_fare ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);"><span style="font-size:12.5px;color:var(--text-dim);">Precio estimado del viaje</span><span style="font-size:17px;font-weight:700;">${money(ride.estimated_fare)}</span></div>` : ''}
+        <button class="btn secondary" id="openChatBtnDriver" style="margin-top:10px;">💬 Mensaje al pasajero</button>
         ${actionBtn}
       </div>
     `;
+
+    const chatBtnDriver = document.getElementById('openChatBtnDriver');
+    if(chatBtnDriver) chatBtnDriver.onclick = () => renderChatScreen(ride.id, 'conductor', ride.passenger_name);
 
     const driverTrackMapEl = document.getElementById('driverTrackMap');
     if(driverTrackMapEl){
@@ -2345,6 +2486,7 @@
         session.driverPlate = data.plate;
         session.driverPhoto = data.photo_url;
         session.driverCarPhoto = data.car_photo_url;
+        session.driverMpAlias = data.mp_alias;
         session.driverStatus = data.status;
         return render();
       }
