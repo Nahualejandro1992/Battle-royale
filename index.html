@@ -1715,11 +1715,12 @@
       'Deslizá para confirmar y pedir', '¡Listo, pidiendo!', submitRideRequest);
   }
 
+  const FOLLOW_ZOOM = 16.5; // qué tan cerca acerca la cámara cuando sigue al auto en curso
   let trackMap = null, trackMarkers = { origin:null, dest:null, driver:null }, trackRouteDrawn = false;
 
   function renderPassengerTracking(){
     trackMap = null; trackMarkers = { origin:null, dest:null, driver:null }; trackRouteDrawn = false;
-    trackRouteCoords = null; trackDriverRouteIdx = null;
+    trackRouteCoords = null; trackDriverRouteIdx = null; trackFollowActive = false;
     stageContent.innerHTML = `<div id="statusHeroWrap"></div>`;
     main.innerHTML = `
       <div class="backLink" id="cancelBack">← cancelar y volver</div>
@@ -1745,6 +1746,8 @@
   }
 
   let trackRouteCoords = null, trackDriverRouteIdx = null;
+
+  let trackFollowActive = false;
 
   function updateTrackMap(ride){
     const container = document.getElementById('trackMap');
@@ -1783,6 +1786,16 @@
         trackDriverRouteIdx = newIdx;
       } else {
         trackMarkers.driver.setLatLng([ride.driver_lat, ride.driver_lng]);
+      }
+
+      // Apenas arranca el viaje en curso, la cámara se acerca y sigue al auto de cerca (como Uber)
+      if(ride.status === 'en_curso'){
+        if(!trackFollowActive){
+          trackFollowActive = true;
+          trackMap.setView([ride.driver_lat, ride.driver_lng], FOLLOW_ZOOM, {animate:true});
+        } else {
+          trackMap.panTo([ride.driver_lat, ride.driver_lng], {animate:true, duration:1.1, easeLinearity:0.3});
+        }
       }
     }
   }
@@ -2722,7 +2735,7 @@
 
     if(session.activeRideId){
       driverActiveMap = null; driverActiveMarkers = { origin:null, dest:null, driver:null };
-      driverActiveRouteCoords = null; driverActiveRouteIdx = null;
+      driverActiveRouteCoords = null; driverActiveRouteIdx = null; driverFollowActive = false;
       el.innerHTML = `
         <div class="card rideCard">
           <div id="driverStatusArea"></div>
@@ -2756,7 +2769,7 @@
     loadPendingRides();
   }
 
-  let driverActiveRouteCoords = null, driverActiveRouteIdx = null;
+  let driverActiveRouteCoords = null, driverActiveRouteIdx = null, driverFollowActive = false;
 
   function updateDriverActiveMap(ride){
     const container = document.getElementById('driverTrackMap');
@@ -2793,6 +2806,15 @@
         driverActiveRouteIdx = newIdx;
       } else {
         driverActiveMarkers.driver.setLatLng([ride.driver_lat, ride.driver_lng]);
+      }
+
+      if(ride.status === 'en_curso'){
+        if(!driverFollowActive){
+          driverFollowActive = true;
+          driverActiveMap.setView([ride.driver_lat, ride.driver_lng], FOLLOW_ZOOM, {animate:true});
+        } else {
+          driverActiveMap.panTo([ride.driver_lat, ride.driver_lng], {animate:true, duration:1.1, easeLinearity:0.3});
+        }
       }
     }
   }
