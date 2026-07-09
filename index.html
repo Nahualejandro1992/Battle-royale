@@ -238,6 +238,23 @@
   .avatarPhoto{padding:0;overflow:hidden;}
   .avatarPhoto img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
 
+  /* ===== BANNER DE PERFIL CON PARTÍCULAS ===== */
+  .profileBanner{position:relative;overflow:hidden;padding:32px 20px !important;}
+  .profileBanner::before{
+    content:'';position:absolute;inset:0;
+    background:radial-gradient(circle at 50% 30%, rgba(215,181,109,.14), transparent 65%);
+    pointer-events:none;
+  }
+  .particleLayer{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0;}
+  .particle{position:absolute;bottom:-10px;border-radius:50%;opacity:0;animation:particleFloat linear infinite;}
+  @keyframes particleFloat{
+    0%{ transform:translateY(0) translateX(0) scale(1); opacity:0; }
+    12%{ opacity:1; }
+    88%{ opacity:.7; }
+    100%{ transform:translateY(-180px) translateX(var(--drift,12px)) scale(.4); opacity:0; }
+  }
+  .profileBanner > *{position:relative;z-index:1;}
+
   /* ===== AVISO URGENTE (pedido privado) ===== */
   .urgentOverlay{position:fixed;inset:0;background:rgba(8,10,16,.92);backdrop-filter:blur(6px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .2s ease both;}
   .urgentCard{background:var(--surface);border:2px solid var(--gold);border-radius:var(--radius-lg);padding:26px 22px;max-width:400px;width:100%;text-align:center;box-shadow:0 0 40px rgba(215,181,109,.25);}
@@ -1717,6 +1734,33 @@
     };
   }
 
+  // Partículas doradas flotando sobre un banner (efecto decorativo, liviano en CSS)
+  function spawnParticles(containerId, count){
+    const layer = document.getElementById(containerId);
+    if(!layer) return;
+    const colors = ['#d7b56d', '#4b7bff', '#f2f2ee'];
+    layer.innerHTML = '';
+    for(let i=0; i<count; i++){
+      const p = document.createElement('div');
+      p.className = 'particle';
+      const size = 2 + Math.random()*4;
+      const left = Math.random()*100;
+      const duration = 4 + Math.random()*4;
+      const delay = Math.random()*6;
+      const drift = (Math.random()*40-20).toFixed(0) + 'px';
+      const color = colors[Math.floor(Math.random()*colors.length)];
+      p.style.left = left + '%';
+      p.style.width = size + 'px';
+      p.style.height = size + 'px';
+      p.style.background = color;
+      p.style.boxShadow = `0 0 ${size*2}px ${color}`;
+      p.style.setProperty('--drift', drift);
+      p.style.animationDuration = duration + 's';
+      p.style.animationDelay = delay + 's';
+      layer.appendChild(p);
+    }
+  }
+
   async function renderDriverProfileView(){
     stageContent.innerHTML = `
       <div style="padding:30px 4px 0;">
@@ -1727,7 +1771,8 @@
     main.innerHTML = `
       <div class="backLink" id="back">← volver</div>
 
-      <div class="card" style="text-align:center;padding:28px 20px;">
+      <div class="card profileBanner" style="text-align:center;">
+        <div class="particleLayer" id="particleLayer"></div>
         ${session.driverPhoto
           ? `<img src="${session.driverPhoto}" alt="" style="width:96px;height:96px;border-radius:50%;object-fit:cover;margin-bottom:14px;border:3px solid var(--accent-dim);">`
           : `<div class="avatar" style="width:96px;height:96px;font-size:32px;margin:0 auto 14px;">${initials(session.driverName)}</div>`
@@ -1752,6 +1797,7 @@
     `;
     document.getElementById('back').onclick = () => renderDriverDashboard();
     document.getElementById('goEdit').onclick = () => renderDriverEditProfile();
+    spawnParticles('particleLayer', 22);
 
     if(supa && session.driverId){
       getDriverRatingSummary(session.driverId).then(summary => {
