@@ -244,6 +244,11 @@
 
   .addressSearchRow{display:flex;gap:8px;margin-bottom:8px;}
   .addressSearchRow input{flex:1;}
+
+  .addressSuggestions{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);margin:-4px 0 10px;overflow:hidden;}
+  .addressSuggestItem{padding:12px 14px;font-size:13.5px;color:var(--text-dim);border-bottom:1px solid var(--border);cursor:pointer;}
+  .addressSuggestItem:last-child{border-bottom:none;}
+  .addressSuggestItem:active{background:var(--accent-dim);color:#fff;}
   .iconSearchBtn{width:48px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-dim);font-size:16px;cursor:pointer;flex-shrink:0;}
   .iconSearchBtn:active{transform:scale(.94);}
 
@@ -319,7 +324,12 @@
   .chatInputRow{display:flex;gap:8px;position:sticky;bottom:0;background:var(--surface);padding-top:8px;}
   .chatInputRow input{flex:1;}
 
-  .mpAliasCard{display:flex;align-items:center;gap:12px;background:#00b1ea1a;border:1px solid #00b1ea44;border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:12px;}
+  .mpAliasCard{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg, #00b1ea22, #009ee322);border:1px solid #00b1ea55;border-radius:var(--radius-md);padding:14px 16px;margin-bottom:12px;}
+  .mpLogoBadge{display:inline-flex;align-items:center;gap:5px;background:#fff;border-radius:20px;padding:4px 10px 4px 6px;font-family:'Space Grotesk';font-weight:700;font-size:11.5px;margin-bottom:6px;}
+  .mpLogoBadge .mpDot{width:16px;height:16px;border-radius:50%;background:#00b1ea;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;}
+  .mpLogoBadge .mpMercado{color:#00b1ea;}
+  .mpLogoBadge .mpPago{color:#2d3277;}
+  .mpQrWrap{background:#fff;border-radius:12px;padding:6px;flex-shrink:0;}
 
   /* ===== PATENTE ESTILO CHAPA REAL ===== */
   .plateBadge{display:inline-flex;align-items:center;background:#f2f2ee;color:#0c0c0e;font-family:'Space Grotesk',monospace;font-weight:700;font-size:13px;letter-spacing:1.5px;padding:4px 10px;border-radius:4px;border:2px solid #0c0c0e;box-shadow:0 1px 0 rgba(255,255,255,.4) inset;}
@@ -690,7 +700,8 @@
   }
 
   // ================= MAPA (Leaflet, limitado a CABA) =================
-  const CABA_BOUNDS = [[-34.715, -58.535], [-34.520, -58.330]]; // SW, NE
+  // Cobertura: CABA + Gran Buenos Aires (los partidos más cercanos)
+  const CABA_BOUNDS = [[-35.10, -58.90], [-34.25, -58.00]]; // SW, NE
   const CABA_CENTER = [-34.6037, -58.3816]; // Obelisco
   // Voyager tiene jerarquía de calles clara (autopistas, avenidas, calles, parques, agua)
   // y lo oscurecemos con un filtro CSS en vez de perder ese detalle con un estilo "dark" plano.
@@ -700,8 +711,8 @@
   function makeBaseMap(containerId, interactive){
     const map = L.map(containerId, {
       center: CABA_CENTER,
-      zoom: 12,
-      minZoom: 11,
+      zoom: 11,
+      minZoom: 9,
       maxZoom: 17,
       maxBounds: CABA_BOUNDS,
       maxBoundsViscosity: 1.0,
@@ -735,16 +746,26 @@
 
   // Busca una dirección escrita y la convierte en coordenadas, acotado a CABA
   async function forwardGeocode(query){
+    const results = await forwardGeocodeList(query);
+    return results && results[0] ? { lat: results[0].lat, lng: results[0].lng } : null;
+  }
+
+  // Devuelve varias opciones (para mostrar un listado tipo autocompletar), CABA + Gran Buenos Aires
+  async function forwardGeocodeList(query){
     try{
       const viewbox = `${CABA_BOUNDS[0][1]},${CABA_BOUNDS[1][0]},${CABA_BOUNDS[1][1]},${CABA_BOUNDS[0][0]}`;
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', CABA, Argentina')}&viewbox=${viewbox}&bounded=1&limit=1`;
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Buenos Aires, Argentina')}&viewbox=${viewbox}&bounded=1&limit=5&addressdetails=1`;
       const res = await fetch(url);
       const data = await res.json();
-      if(data && data[0]){
-        return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+      if(data && data.length){
+        return data.map(d => ({
+          lat: parseFloat(d.lat),
+          lng: parseFloat(d.lon),
+          label: d.display_name.split(',').slice(0,3).join(',').trim()
+        }));
       }
     } catch(e){ console.warn('búsqueda de dirección falló', e); }
-    return null;
+    return [];
   }
 
   function inCaba(lat, lng){
@@ -1071,7 +1092,7 @@
     stageContent.innerHTML = `
       <div style="padding:30px 4px 0;">
         <div style="font-size:22px;font-weight:600;">Pedí tu viaje</div>
-        <div style="font-size:13px;color:var(--text-dim);margin-top:6px;">Solo zona CABA por ahora</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-top:6px;">CABA y Gran Buenos Aires</div>
       </div>
     `;
 
@@ -1093,25 +1114,25 @@
     ` : '';
 
     main.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div class="backLink" id="back">← volver</div>
-        <div style="display:flex;gap:14px;">
-          <div class="backLink" id="historyLink">tus viajes</div>
-          <div class="backLink" id="logoutPassenger">cambiar cuenta</div>
-        </div>
+      <div class="backLink" id="back">← volver</div>
+      <div class="quickActionsRow">
+        <div class="quickActionBtn" id="historyLink"><span class="qaIcon">📋</span>Tus viajes</div>
+        <div class="quickActionBtn" id="logoutPassenger"><span class="qaIcon">🚪</span>Cambiar cuenta</div>
       </div>
 
       ${targetChip}
 
       <label>Origen y destino</label>
       <div class="addressSearchRow">
-        <input type="text" id="searchOrigin" placeholder="Escribí el origen (o tocá el mapa)">
+        <input type="text" id="searchOrigin" placeholder="Escribí el origen (o tocá el mapa)" autocomplete="off">
         <button class="iconSearchBtn" id="btnSearchOrigin">🔎</button>
       </div>
+      <div class="addressSuggestions hidden" id="suggestOrigin"></div>
       <div class="addressSearchRow">
-        <input type="text" id="searchDest" placeholder="Escribí el destino (o tocá el mapa)">
+        <input type="text" id="searchDest" placeholder="Escribí el destino (o tocá el mapa)" autocomplete="off">
         <button class="iconSearchBtn" id="btnSearchDest">🔎</button>
       </div>
+      <div class="addressSuggestions hidden" id="suggestDest"></div>
 
       <div class="mapWrap">
         <div class="mapPicker" id="pickerMap"></div>
@@ -1235,7 +1256,7 @@
         }
         if(evt.stage === 'route-real'){ routeKm = evt.km; routeMinutes = evt.minutes; if(hint) hint.textContent = 'Listo, confirmá abajo'; refreshRouteStripUI(); }
         if(evt.stage === 'route-fallback' && hint) hint.textContent = 'Listo, confirmá abajo (ruta aproximada)';
-        if(evt.stage === 'out-of-caba' && hint) hint.textContent = 'Estás fuera de CABA, marcá tu origen manualmente';
+        if(evt.stage === 'out-of-caba' && hint) hint.textContent = 'Estás fuera del área de cobertura, marcá tu origen manualmente';
         if(evt.stage === 'reset'){
           originData = null; destData = null; routeKm = null; routeMinutes = null;
           if(searchOriginEl) searchOriginEl.value = '';
@@ -1258,14 +1279,45 @@
       const hint = document.getElementById('mapStatusText');
       hint.textContent = 'Buscando "' + query + '"...';
       const result = await forwardGeocode(query);
-      if(!result){ hint.textContent = 'No encontré esa dirección en CABA, probá con otro texto'; return; }
+      if(!result){ hint.textContent = 'No encontré esa dirección, probá con otro texto'; return; }
       if(isOrigin) picker.setOriginByCoords(result.lat, result.lng);
       else picker.setDestByCoords(result.lat, result.lng);
     }
     document.getElementById('btnSearchOrigin').onclick = () => searchAndSet(document.getElementById('searchOrigin').value, true);
     document.getElementById('btnSearchDest').onclick = () => searchAndSet(document.getElementById('searchDest').value, false);
-    document.getElementById('searchOrigin').addEventListener('keydown', e => { if(e.key==='Enter') searchAndSet(e.target.value, true); });
-    document.getElementById('searchDest').addEventListener('keydown', e => { if(e.key==='Enter') searchAndSet(e.target.value, false); });
+
+    // Listado de sugerencias en vivo (tipo autocompletar) mientras escribís
+    function setupAddressAutocomplete(inputId, suggestId, isOrigin){
+      const input = document.getElementById(inputId);
+      const box = document.getElementById(suggestId);
+      let debounceTimer = null;
+      input.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        const q = input.value.trim();
+        if(q.length < 4){ box.classList.add('hidden'); box.innerHTML = ''; return; }
+        debounceTimer = setTimeout(async () => {
+          const results = await forwardGeocodeList(q);
+          if(results.length === 0){ box.classList.add('hidden'); box.innerHTML = ''; return; }
+          box.innerHTML = results.map((r,i) => `<div class="addressSuggestItem" data-idx="${i}">${escapeHtml(r.label)}</div>`).join('');
+          box.classList.remove('hidden');
+          box.querySelectorAll('.addressSuggestItem').forEach(item => {
+            item.onclick = () => {
+              const r = results[parseInt(item.dataset.idx)];
+              input.value = r.label;
+              box.classList.add('hidden');
+              box.innerHTML = '';
+              if(isOrigin) picker.setOriginByCoords(r.lat, r.lng);
+              else picker.setDestByCoords(r.lat, r.lng);
+            };
+          });
+        }, 450);
+      });
+      input.addEventListener('keydown', e => {
+        if(e.key === 'Enter'){ box.classList.add('hidden'); searchAndSet(input.value, isOrigin); }
+      });
+    }
+    setupAddressAutocomplete('searchOrigin', 'suggestOrigin', true);
+    setupAddressAutocomplete('searchDest', 'suggestDest', false);
 
     document.querySelectorAll('#depositMethodGroup .segOpt').forEach(el => {
       el.onclick = () => {
@@ -1454,10 +1506,13 @@
           ${ride.driver_mp_alias ? `
             <div class="mpAliasCard">
               <div style="flex:1;">
-                <div style="font-size:10.5px;color:var(--text-faint);text-transform:uppercase;font-weight:700;letter-spacing:.3px;">Transferir por MercadoPago</div>
-                <div style="font-size:15px;font-weight:700;margin-top:3px;">${escapeHtml(ride.driver_mp_alias)}</div>
+                <div class="mpLogoBadge"><span class="mpDot">$</span><span class="mpMercado">mercado</span><span class="mpPago">pago</span></div>
+                <div style="font-size:15px;font-weight:700;">${escapeHtml(ride.driver_mp_alias)}</div>
+                <div style="font-size:10.5px;color:var(--text-faint);margin-top:2px;">Transferí acá o escaneá el QR</div>
               </div>
-              <img src="https://api.qrserver.com/v1/create-qr-code/?size=64x64&data=${encodeURIComponent(ride.driver_mp_alias)}" alt="QR" style="width:56px;height:56px;border-radius:8px;background:#fff;padding:4px;">
+              <div class="mpQrWrap">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=76x76&data=${encodeURIComponent(ride.driver_mp_alias)}" alt="QR" style="width:76px;height:76px;display:block;">
+              </div>
             </div>
           ` : ''}
           <button class="btn secondary" id="openChatBtn">💬 Mensaje al conductor</button>
@@ -1942,7 +1997,16 @@
       <div class="card">
         <div class="sectionLabel" style="margin-top:0;">Cobro por transferencia</div>
         ${session.driverMpAlias
-          ? `<div style="font-size:15px;font-weight:700;margin-top:6px;">💳 ${escapeHtml(session.driverMpAlias)}</div><div style="font-size:11.5px;color:var(--text-faint);margin-top:4px;">Así lo ven los pasajeros para transferirte</div>`
+          ? `<div class="mpAliasCard" style="margin-top:8px;margin-bottom:0;">
+               <div style="flex:1;">
+                 <div class="mpLogoBadge"><span class="mpDot">$</span><span class="mpMercado">mercado</span><span class="mpPago">pago</span></div>
+                 <div style="font-size:15px;font-weight:700;">${escapeHtml(session.driverMpAlias)}</div>
+                 <div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Así te ven los pasajeros</div>
+               </div>
+               <div class="mpQrWrap">
+                 <img src="https://api.qrserver.com/v1/create-qr-code/?size=76x76&data=${encodeURIComponent(session.driverMpAlias)}" alt="QR" style="width:76px;height:76px;display:block;">
+               </div>
+             </div>`
           : `<div style="font-size:13px;color:var(--text-faint);margin-top:6px;">Todavía no cargaste tu alias de MercadoPago. Sumalo en "Editar perfil".</div>`
         }
       </div>
