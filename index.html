@@ -298,6 +298,12 @@
   .profileBanner > *{position:relative;z-index:1;}
 
   /* ===== AVISO URGENTE (pedido privado) ===== */
+  /* ===== NUBE DE DEMANDA (mapa en vivo) ===== */
+  .demandBadge{position:absolute;top:10px;left:10px;z-index:400;background:rgba(12,12,14,.88);backdrop-filter:blur(4px);border:1.5px solid var(--border);color:var(--text);font-size:12px;font-weight:700;padding:7px 13px;border-radius:20px;display:flex;align-items:center;gap:7px;}
+  .demandDot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+  .demandLegend{display:flex;gap:16px;justify-content:center;margin:12px 0;}
+  .demandLegendItem{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);}
+
   .urgentOverlay{position:fixed;inset:0;background:rgba(8,10,16,.92);backdrop-filter:blur(6px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .2s ease both;}
   .urgentCard{background:var(--surface);border:2px solid var(--gold);border-radius:var(--radius-lg);padding:26px 22px;max-width:400px;width:100%;text-align:center;box-shadow:0 0 40px rgba(215,181,109,.25);}
   .urgentBadge{display:inline-block;background:var(--gold-dim);color:var(--gold);font-size:11.5px;font-weight:800;letter-spacing:.5px;padding:6px 14px;border-radius:20px;margin-bottom:10px;}
@@ -1021,17 +1027,140 @@
       </div>
     `;
     main.innerHTML = `
-      <div class="backLink" id="back">← volver</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="backLink" id="back">← volver</div>
+        <div class="backLink" id="goLiveMap">🗺️ ver en mapa</div>
+      </div>
       <div id="directoryList"><div class="empty">Cargando conductores...</div></div>
     `;
     document.getElementById('back').onclick = () => {
       if(directoryChannel){ supa.removeChannel(directoryChannel); directoryChannel = null; }
       session.role = null; render();
     };
+    document.getElementById('goLiveMap').onclick = () => {
+      if(directoryChannel){ supa.removeChannel(directoryChannel); directoryChannel = null; }
+      renderLiveFleetMap();
+    };
     loadDirectory();
     directoryChannel = supa.channel('directory')
       .on('postgres_changes', { event:'*', schema:'public', table:'drivers' }, () => loadDirectory())
       .subscribe();
+  }
+
+  // ================= DEMANDA (nube de color según hora/lluvia, como el mapa de Uber) =================
+  async function getDemandInfo(){
+    const isNight = isNightSurgeTime();
+    let raining = false;
+    try{ raining = await isRainingAt(CABA_CENTER[0], CABA_CENTER[1]); } catch(e){}
+    let level, color, label, multiplier;
+    if(isNight && raining){
+      level='alta'; color='#ef5b6b'; label='Demanda alta'; multiplier = SURGE_NIGHT_MULTIPLIER*SURGE_RAIN_MULTIPLIER;
+    } else if(isNight || raining){
+      level='media'; color='#a86bd7'; label='Demanda media'; multiplier = isNight ? SURGE_NIGHT_MULTIPLIER : SURGE_RAIN_MULTIPLIER;
+    } else {
+      level='baja'; color='#4b7bff'; label='Demanda baja'; multiplier = 1;
+    }
+    return { level, color, label, multiplier, isNight, raining };
+  }
+
+  let fleetMap = null, fleetMarkers = {}, fleetChannel = null;
+
+  async function renderLiveFleetMap(){
+    stageContent.innerHTML = `
+      <div style="padding:30px 4px 0;">
+        <div style="font-size:22px;font-weight:600;">Mapa en vivo</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-top:6px;">Conductores conectados ahora</div>
+      </div>
+    `;
+    main.innerHTML = `
+      <div class="backLink" id="back">← volver a la lista</div>
+      <div class="mapWrap" style="position:relative;">
+        <div class="mapPicker" id="fleetMap" style="height:420px;"></div>
+        <div id="demandBadge" class="demandBadge">···</div>
+      </div>
+      <div class="demandLegend">
+        <div class="demandLegendItem"><span class="demandDot" style="background:#4b7bff;"></span>Baja</div>
+        <div class="demandLegendItem"><span class="demandDot" style="background:#a86bd7;"></span>Media</div>
+        <div class="demandLegendItem"><span class="demandDot" style="background:#ef5b6b;"></span>Alta</div>
+      </div>
+      <div id="fleetList"></div>
+    `;
+    document.getElementById('back').onclick = () => {
+      if(fleetChannel){ supa.removeChannel(fleetChannel); fleetChannel = null; }
+      fleetMap = null; fleetMarkers = {};
+      renderDriverDirectory();
+    };
+
+    fleetMap = makeBaseMap('fleetMap', true);
+    setTimeout(()=> fleetMap && fleetMap.invalidateSize(), 80);
+
+    // Nube de demanda: un círculo grande y difuso centrado en CABA, color según demanda actual
+    const demand = await getDemandInfo();
+    const cloud = L.circle(CABA_CENTER, {
+      radius: 14000,
+      color: demand.color,
+      weight: 0,
+      fillColor: demand.color,
+      fillOpacity: 0.16
+    }).addTo(fleetMap);
+    const cloudCore = L.circle(CABA_CENTER, {
+      radius: 6000,
+      color: demand.color,
+      weight: 0,
+      fillColor: demand.color,
+      fillOpacity: 0.10
+    }).addTo(fleetMap);
+
+    const badge = document.getElementById('demandBadge');
+    if(badge){
+      badge.innerHTML = `<span class="demandDot" style="background:${demand.color};"></span>${demand.label} · x${demand.multiplier.toFixed(2)}`;
+      badge.style.borderColor = demand.color;
+    }
+
+    loadFleetPositions();
+    fleetChannel = supa.channel('fleet-map')
+      .on('postgres_changes', { event:'*', schema:'public', table:'drivers' }, () => loadFleetPositions())
+      .subscribe();
+  }
+
+  async function loadFleetPositions(){
+    if(!supa || !fleetMap) return;
+    const { data } = await supa.from('drivers').select('*').neq('status','offline');
+    if(!data) return;
+
+    const seenIds = new Set();
+    data.forEach(d => {
+      const lat = d.live_lat; const lng = d.live_lng;
+      if(!lat || !lng) return;
+      seenIds.add(d.id);
+      const color = d.status === 'disponible' ? '#3ecf7e' : (d.status === 'reservado' ? '#d7b56d' : '#e8a33d');
+      if(!fleetMarkers[d.id]){
+        const icon = L.divIcon({
+          className:'',
+          html:`<div style="width:26px;height:26px;border-radius:50%;background:${color};border:2px solid #0c0c0e;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px ${color};">${CAR_SVG}</div>`,
+          iconSize:[26,26], iconAnchor:[13,13]
+        });
+        fleetMarkers[d.id] = L.marker([lat,lng], {icon}).addTo(fleetMap).bindTooltip(d.name, {direction:'top'});
+        const el = fleetMarkers[d.id].getElement();
+        if(el) el.style.transition = 'transform 1.2s linear';
+      } else {
+        fleetMarkers[d.id].setLatLng([lat,lng]);
+      }
+    });
+
+    // saco del mapa a los que ya no están conectados
+    Object.keys(fleetMarkers).forEach(id => {
+      if(!seenIds.has(id)){
+        fleetMap.removeLayer(fleetMarkers[id]);
+        delete fleetMarkers[id];
+      }
+    });
+
+    const listEl = document.getElementById('fleetList');
+    if(listEl){
+      const withLoc = data.filter(d => d.live_lat && d.live_lng);
+      listEl.innerHTML = `<div class="sectionLabel">${withLoc.length} conductor${withLoc.length===1?'':'es'} visible${withLoc.length===1?'':'s'} en el mapa</div>`;
+    }
   }
 
   async function loadDirectory(){
@@ -1923,6 +2052,7 @@
         session.driverMpAlias = data.mp_alias;
         session.driverMpQrPhoto = data.mp_qr_photo_url;
         session.driverStatus = data.status; // respeta el estado real guardado, no fuerza "disponible"
+        if(data.status === 'disponible') startIdleLocationSharing();
         rememberAccount('conductor', data.phone);
         vibrate(20);
         render();
@@ -2402,11 +2532,40 @@
     });
   }
 
+  let idleGeoWatchId = null;
+  let lastIdleGeoSend = 0;
+
+  function startIdleLocationSharing(){
+    stopIdleLocationSharing();
+    if(!navigator.geolocation) return;
+    idleGeoWatchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const now = Date.now();
+        if(now - lastIdleGeoSend < 5000) return; // cada 5 seg como mucho
+        lastIdleGeoSend = now;
+        supa.from('drivers').update({
+          live_lat: pos.coords.latitude,
+          live_lng: pos.coords.longitude
+        }).eq('id', session.driverId).then(()=>{});
+      },
+      (err) => console.warn('geo watch (disponible) error', err),
+      { enableHighAccuracy:true, maximumAge:4000 }
+    );
+  }
+
+  function stopIdleLocationSharing(){
+    if(idleGeoWatchId !== null && navigator.geolocation){
+      navigator.geolocation.clearWatch(idleGeoWatchId);
+      idleGeoWatchId = null;
+    }
+  }
+
   async function commitConnect(goOn){
     const newStatus = goOn ? 'disponible' : 'offline';
     session.driverStatus = newStatus;
     vibrate(goOn ? [15,40,15] : 25);
     await supa.from('drivers').update({status:newStatus, updated_at:new Date().toISOString()}).eq('id', session.driverId);
+    if(goOn) startIdleLocationSharing(); else stopIdleLocationSharing();
     render();
   }
 
@@ -2777,6 +2936,7 @@
         session.driverMpAlias = data.mp_alias;
         session.driverMpQrPhoto = data.mp_qr_photo_url;
         session.driverStatus = data.status;
+        if(data.status === 'disponible') startIdleLocationSharing();
         return render();
       }
     } else if(remembered && remembered.role === 'pasajero'){
