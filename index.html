@@ -10,28 +10,30 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   :root{
-    --bg:#0c0c0e;
-    --stage-grad-1:#15171c;
-    --stage-grad-2:#0c0c0e;
-    --surface:#17181c;
-    --surface-2:#1e2025;
-    --border:#2a2c33;
-    --text:#f5f5f2;
-    --text-dim:#8b8d94;
-    --text-faint:#55575f;
-    --accent:#4b7bff;
-    --accent-dim:#294277;
-    --gold:#d7b56d;
-    --gold-dim:#3a3324;
-    --success:#3ecf7e;
-    --success-dim:#173b28;
-    --warning:#e8a33d;
-    --warning-dim:#3a2c14;
-    --danger:#ef5b6b;
-    --danger-dim:#3a1e22;
-    --radius-lg:26px;
-    --radius-md:16px;
-    --radius-sm:10px;
+    --bg:#0a0a0d;
+    --stage-grad-1:#16161f;
+    --stage-grad-2:#0a0a0d;
+    --surface:#18181f;
+    --surface-2:#20212b;
+    --border:#2c2d38;
+    --text:#f7f7f9;
+    --text-dim:#9b9ba8;
+    --text-faint:#5c5c68;
+    --accent:#5b5fee;
+    --accent-dim:#252359;
+    --gold:#e3bb78;
+    --gold-dim:#3d3320;
+    --success:#34d399;
+    --success-dim:#113828;
+    --warning:#f5a742;
+    --warning-dim:#3a2a10;
+    --danger:#f4576b;
+    --danger-dim:#3a1620;
+    --radius-lg:28px;
+    --radius-md:18px;
+    --radius-sm:12px;
+    --shadow-card:0 4px 18px rgba(0,0,0,.28);
+    --shadow-pop:0 10px 34px rgba(0,0,0,.4);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--text);min-height:100%;font-family:'Inter',-apple-system,Segoe UI,Arial,sans-serif;}
@@ -120,12 +122,13 @@
   /* ===== BUTTONS ===== */
   .btn{display:flex;align-items:center;justify-content:center;width:100%;background:var(--text);color:#0c0c0e;border:none;
     padding:16px;border-radius:var(--radius-sm);font-size:15px;font-weight:700;margin:8px 0;cursor:pointer;font-family:inherit;
-    transition:transform .1s;}
+    transition:transform .1s;box-shadow:0 2px 10px rgba(0,0,0,.22);}
   .btn:active{transform:scale(.97);}
-  .btn.secondary{background:transparent;border:1px solid var(--border);color:var(--text);}
+  .btn svg{margin-right:8px;flex-shrink:0;}
+  .btn.secondary{background:var(--surface-2);border:1px solid var(--border);color:var(--text);box-shadow:none;}
   .btn.accent{background:var(--accent);color:#fff;}
   .btn.success{background:var(--success);color:#062015;}
-  .btn.danger{background:transparent;border:1px solid var(--danger-dim);color:var(--danger);}
+  .btn.danger{background:transparent;border:1px solid var(--danger-dim);color:var(--danger);box-shadow:none;}
   .btn:disabled{opacity:.35;}
 
   .choiceCard{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;margin-bottom:12px;display:flex;align-items:center;gap:16px;cursor:pointer;transition:border-color .15s;}
@@ -148,7 +151,7 @@
   .etaBadge{display:inline-block;margin-top:10px;background:var(--accent-dim);color:#cfdcff;font-size:13px;font-weight:700;padding:6px 14px;border-radius:20px;}
 
   /* ===== CARDS ===== */
-  .card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:18px;margin-bottom:12px;}
+  .card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:18px;margin-bottom:12px;box-shadow:var(--shadow-card);}
   .rideCard{position:relative;}
   .rideCard .who{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
   .avatar{width:38px;height:38px;border-radius:50%;background:var(--accent-dim);color:#cfdcff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;}
@@ -172,7 +175,7 @@
   .quickActionsRow{display:flex;gap:8px;padding:14px 4px 0;}
   .quickActionBtn{flex:1;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 6px;text-align:center;font-size:11.5px;font-weight:600;color:var(--text-dim);cursor:pointer;}
   .quickActionBtn:active{transform:scale(.96);border-color:var(--accent-dim);}
-  .quickActionBtn .qaIcon{display:block;font-size:18px;margin-bottom:4px;}
+  .quickActionBtn .qaIcon{display:flex;justify-content:center;margin-bottom:5px;color:var(--accent);}
 
   /* ===== RESUMEN DEL DÍA (aprovecha el espacio libre bajo el slider) ===== */
   .todayStatsRow{display:flex;gap:8px;margin:14px 0 4px;}
@@ -241,7 +244,7 @@
   .caba-pin.dest{border-color:var(--gold);box-shadow:0 0 10px rgba(215,181,109,.6);border-radius:5px;}
   .caba-pin.me{width:16px;height:16px;border:3px solid #fff;background:var(--accent);box-shadow:0 0 0 6px rgba(75,123,255,.25);}
   /* tiño el mapa para que combine con la paleta de la app en vez de verse "aparte" */
-  .leaflet-tile-pane{filter:invert(93%) hue-rotate(180deg) brightness(0.94) contrast(0.88) saturate(0.7);}
+  .leaflet-tile-pane{filter:invert(90%) hue-rotate(180deg) brightness(1.02) contrast(0.95) saturate(0.85);}
 
   /* botones chicos tipo ícono flotando sobre el mapa (antes eran píldoras con texto) */
   .mapIconBtn{position:absolute;top:10px;right:10px;z-index:400;width:38px;height:38px;background:rgba(12,12,14,.85);color:var(--accent);font-size:16px;border-radius:50%;border:1px solid var(--accent-dim);cursor:pointer;display:flex;align-items:center;justify-content:center;}
@@ -527,7 +530,7 @@
     let level, color;
     if(multiplier >= 1.35){ level='alta'; color='#ef5b6b'; }
     else if(multiplier > 1.05){ level='media'; color='#a86bd7'; }
-    else { level='baja'; color='#4b7bff'; }
+    else { level='baja'; color='#5b5fee'; }
     return { multiplier, timeMult, weather, level, color };
   }
 
@@ -619,7 +622,7 @@
   async function renderChatScreen(rideId, myRole, otherName){
     stageContent.innerHTML = `
       <div style="padding:30px 4px 0;">
-        <div style="font-size:22px;font-weight:600;">💬 ${escapeHtml(otherName||'Chat')}</div>
+        <div style="font-size:22px;font-weight:600;display:flex;align-items:center;gap:9px;">${ICONS.chat} ${escapeHtml(otherName||'Chat')}</div>
         <div style="font-size:13px;color:var(--text-dim);margin-top:6px;">Mensajes de este viaje</div>
       </div>
     `;
@@ -901,7 +904,7 @@
       if(line){ map.removeLayer(line); line = null; }
       if(originPt && destPt){
         // línea recta provisoria mientras se calcula la ruta real
-        line = L.polyline([[originPt.lat,originPt.lng],[destPt.lat,destPt.lng]], { color:'#4b7bff', weight:2, dashArray:'2 8', opacity:.6 }).addTo(map);
+        line = L.polyline([[originPt.lat,originPt.lng],[destPt.lat,destPt.lng]], { color:'#5b5fee', weight:2, dashArray:'2 8', opacity:.6 }).addTo(map);
       }
     }
 
@@ -910,10 +913,10 @@
       const route = await fetchRealRoute(originPt.lat, originPt.lng, destPt.lat, destPt.lng);
       if(line){ map.removeLayer(line); line = null; }
       if(route){
-        line = L.polyline(route.coords, { color:'#4b7bff', weight:4, opacity:.85 }).addTo(map);
+        line = L.polyline(route.coords, { color:'#5b5fee', weight:4, opacity:.85 }).addTo(map);
         onUpdate({ stage:'route-real', km: route.km, minutes: route.minutes });
       } else {
-        line = L.polyline([[originPt.lat,originPt.lng],[destPt.lat,destPt.lng]], { color:'#4b7bff', weight:2, dashArray:'2 8', opacity:.7 }).addTo(map);
+        line = L.polyline([[originPt.lat,originPt.lng],[destPt.lat,destPt.lng]], { color:'#5b5fee', weight:2, dashArray:'2 8', opacity:.7 }).addTo(map);
         onUpdate({ stage:'route-fallback' });
       }
     }
@@ -983,6 +986,22 @@
   }
 
   // Mapa de solo lectura para mostrar un viaje ya cargado (con lat/lng guardados)
+  // ================= SET DE ÍCONOS PROPIOS (línea, consistentes, en vez de emojis) =================
+  const ICONS = {
+    history: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 12a8 8 0 1 1 2.5 5.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 8v4h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    profile: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8"/><path d="M5 20c1.2-3.6 4-5.4 7-5.4s5.8 1.8 7 5.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+    logout: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M9 12h11m0 0-3-3m3 3-3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    chat: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 12c0-4.4 3.6-8 8-8s8 3.6 8 8-3.6 8-8 8c-1.2 0-2.4-.3-3.4-.8L4 20l1.1-4.2C4.4 14.6 4 13.3 4 12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="8.5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="15.5" cy="12" r="1" fill="currentColor"/></svg>`,
+    edit: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 20l1-4L16 5l3 3L8 19l-4 1Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M13.5 6.5l3 3" stroke="currentColor" stroke-width="1.8"/></svg>`,
+    map: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 4 4 6v14l5-2 6 2 5-2V4l-5 2-6-2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 4v14M15 6v14" stroke="currentColor" stroke-width="1.8"/></svg>`,
+    pin: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 21s7-6.3 7-11.5A7 7 0 0 0 5 9.5C5 14.7 12 21 12 21Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.3" stroke="currentColor" stroke-width="1.8"/></svg>`,
+    reset: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 12a8 8 0 1 1 2.6 5.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 20v-5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    search: `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.8"/><path d="m20 20-3.6-3.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+    wallet: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3.5" y="6" width="17" height="13" rx="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 10h17" stroke="currentColor" stroke-width="1.8"/><circle cx="16.5" cy="14" r="1.2" fill="currentColor"/></svg>`,
+    star: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.5l2.9 6 6.6.7-4.9 4.5 1.3 6.5L12 16.9l-5.9 3.3 1.3-6.5-4.9-4.5 6.6-.7Z"/></svg>`,
+    check: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+  };
+
   const CAR_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 16.5V12.8c0-.4.13-.79.38-1.1L6.6 9.3c.28-.35.7-.55 1.15-.55h8.5c.45 0 .87.2 1.15.55l1.72 2.4c.25.31.38.7.38 1.1v3.7" stroke="#0c0c0e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="3" y="16.5" width="18" height="3" rx="1.2" stroke="#0c0c0e" stroke-width="1.6"/><circle cx="7" cy="19.5" r="1.4" fill="#0c0c0e"/><circle cx="17" cy="19.5" r="1.4" fill="#0c0c0e"/><path d="M6.8 12.2h10.4" stroke="#0c0c0e" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 
   // Auto visto desde arriba, para poder rotarlo según hacia dónde va (como Uber)
@@ -1075,11 +1094,11 @@
     if(pLat && pLng){ L.marker([pLat,pLng], {icon:pinIcon(false)}).addTo(map); pts.push([pLat,pLng]); }
     if(dLat && dLng){ L.marker([dLat,dLng], {icon:pinIcon(true)}).addTo(map); pts.push([dLat,dLng]); }
     if(pLat && pLng && dLat && dLng){
-      const straightLine = L.polyline([[pLat,pLng],[dLat,dLng]], { color:'#4b7bff', weight:2, dashArray:'2 8', opacity:.6 }).addTo(map);
+      const straightLine = L.polyline([[pLat,pLng],[dLat,dLng]], { color:'#5b5fee', weight:2, dashArray:'2 8', opacity:.6 }).addTo(map);
       fetchRealRoute(pLat, pLng, dLat, dLng).then(route => {
         if(route){
           map.removeLayer(straightLine);
-          L.polyline(route.coords, { color:'#4b7bff', weight:4, opacity:.85 }).addTo(map);
+          L.polyline(route.coords, { color:'#5b5fee', weight:4, opacity:.85 }).addTo(map);
         }
       });
     }
@@ -1171,7 +1190,7 @@
     main.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div class="backLink" id="back">← volver</div>
-        <div class="backLink" id="goLiveMap">🗺️ ver en mapa</div>
+        <div class="backLink" id="goLiveMap" style="display:flex;align-items:center;gap:5px;">${ICONS.map} ver en mapa</div>
       </div>
       <div id="directoryList"><div class="empty">Cargando conductores...</div></div>
     `;
@@ -1212,7 +1231,7 @@
         <div id="demandBadge" class="demandBadge">···</div>
       </div>
       <div class="demandLegend">
-        <div class="demandLegendItem"><span class="demandDot" style="background:#4b7bff;"></span>Baja</div>
+        <div class="demandLegendItem"><span class="demandDot" style="background:#5b5fee;"></span>Baja</div>
         <div class="demandLegendItem"><span class="demandDot" style="background:#a86bd7;"></span>Media</div>
         <div class="demandLegendItem"><span class="demandDot" style="background:#ef5b6b;"></span>Alta</div>
       </div>
@@ -1449,8 +1468,8 @@
     main.innerHTML = `
       <div class="backLink" id="back">← volver</div>
       <div class="quickActionsRow">
-        <div class="quickActionBtn" id="historyLink"><span class="qaIcon">📋</span>Tus viajes</div>
-        <div class="quickActionBtn" id="logoutPassenger"><span class="qaIcon">🚪</span>Cambiar cuenta</div>
+        <div class="quickActionBtn" id="historyLink"><span class="qaIcon">${ICONS.history}</span>Tus viajes</div>
+        <div class="quickActionBtn" id="logoutPassenger"><span class="qaIcon">${ICONS.logout}</span>Cambiar cuenta</div>
       </div>
 
       ${targetChip}
@@ -1458,19 +1477,19 @@
       <label>Origen y destino</label>
       <div class="addressSearchRow">
         <input type="text" id="searchOrigin" placeholder="Escribí el origen (o tocá el mapa)" autocomplete="off">
-        <button class="iconSearchBtn" id="btnSearchOrigin">🔎</button>
+        <button class="iconSearchBtn" id="btnSearchOrigin">${ICONS.search}</button>
       </div>
       <div class="addressSuggestions hidden" id="suggestOrigin"></div>
       <div class="addressSearchRow">
         <input type="text" id="searchDest" placeholder="Escribí el destino (o tocá el mapa)" autocomplete="off">
-        <button class="iconSearchBtn" id="btnSearchDest">🔎</button>
+        <button class="iconSearchBtn" id="btnSearchDest">${ICONS.search}</button>
       </div>
       <div class="addressSuggestions hidden" id="suggestDest"></div>
 
       <div class="mapWrap">
         <div class="mapPicker" id="pickerMap"></div>
-        <div class="mapIconBtn" id="locateBtn" title="Mi ubicación">📍</div>
-        <div class="mapIconBtn" id="mapResetBtn" title="Reiniciar puntos" style="right:56px;">↺</div>
+        <div class="mapIconBtn" id="locateBtn" title="Mi ubicación">${ICONS.pin}</div>
+        <div class="mapIconBtn" id="mapResetBtn" title="Reiniciar puntos" style="right:56px;">${ICONS.reset}</div>
       </div>
       <div id="mapStatusText" style="font-size:11.5px;color:var(--text-faint);margin:6px 2px 0;min-height:16px;"></div>
 
@@ -1736,12 +1755,16 @@
   const FOLLOW_ZOOM = 16.5; // qué tan cerca acerca la cámara cuando sigue al auto en curso
   let trackMap = null, trackMarkers = { origin:null, dest:null, driver:null }, trackRouteDrawn = false;
   let trackPickupETA = null, trackDestETA = null, trackPickupETARequested = false;
+  let trackPickupRouteCoords = null, trackPickupRouteFetching = false, trackPickupRouteLine = null;
+  let trackDestRouteCoords = null, trackDestRouteLine = null, trackActivePhase = null;
   let trackFullBounds = null, trackWasFollowing = false;
 
   function renderPassengerTracking(){
     trackMap = null; trackMarkers = { origin:null, dest:null, driver:null }; trackRouteDrawn = false;
-    trackRouteCoords = null; trackDriverRouteIdx = null; trackFollowActive = false;
+    trackDriverRouteIdx = null; trackFollowActive = false;
     trackPickupETA = null; trackDestETA = null; trackPickupETARequested = false;
+    trackPickupRouteCoords = null; trackPickupRouteFetching = false; trackPickupRouteLine = null;
+    trackDestRouteCoords = null; trackDestRouteLine = null; trackActivePhase = null;
     trackFullBounds = null; trackWasFollowing = false;
     stageContent.innerHTML = `<div id="statusHeroWrap"></div>`;
     main.innerHTML = `
@@ -1767,7 +1790,7 @@
     loadRideOnce(session.activeRideId, renderRideStatusCard);
   }
 
-  let trackRouteCoords = null, trackDriverRouteIdx = null;
+  let trackDriverRouteIdx = null;
 
   let trackFollowActive = false;
 
@@ -1775,20 +1798,20 @@
     const container = document.getElementById('trackMap');
     if(!container) return;
 
-    // Primera vez: creo el mapa, marco origen/destino y trazo la ruta real UNA sola vez
+    // Primera vez: creo el mapa, marco origen/destino y trazo la ruta pickup→destino UNA sola vez
     if(!trackMap && ride.pickup_lat && ride.pickup_lng){
       trackMap = makeBaseMap('trackMap', false);
       trackMarkers.origin = L.marker([ride.pickup_lat, ride.pickup_lng], {icon:pinIcon(false)}).addTo(trackMap);
       if(ride.dropoff_lat && ride.dropoff_lng){
         trackMarkers.dest = L.marker([ride.dropoff_lat, ride.dropoff_lng], {icon:pinIcon(true)}).addTo(trackMap);
-        const straight = L.polyline([[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]], { color:'#4b7bff', weight:2, dashArray:'2 8', opacity:.6 }).addTo(trackMap);
+        const straight = L.polyline([[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]], { color:'#5b5fee', weight:2, dashArray:'2 8', opacity:.6 }).addTo(trackMap);
         trackFullBounds = [[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]];
         trackMap.fitBounds(trackFullBounds, {padding:[30,30]});
         fetchRealRoute(ride.pickup_lat, ride.pickup_lng, ride.dropoff_lat, ride.dropoff_lng).then(route => {
           if(route && trackMap){
             trackMap.removeLayer(straight);
-            L.polyline(route.coords, { color:'#4b7bff', weight:4, opacity:.85 }).addTo(trackMap);
-            trackRouteCoords = route.coords; // guardamos la ruta real para "pegar" el auto a ella
+            trackDestRouteLine = L.polyline(route.coords, { color:'#5b5fee', weight:4, opacity:.85 }).addTo(trackMap);
+            trackDestRouteCoords = route.coords; // ruta pickup→destino, se usa recién cuando el viaje está "en curso"
             trackDestETA = Math.round(route.minutes);
             updateETADisplay(ride);
           }
@@ -1799,24 +1822,42 @@
       setTimeout(()=> trackMap && trackMap.invalidateSize(), 80);
     }
 
-    // ETA hasta que te vengan a buscar (una sola vez, apenas hay auto asignado)
-    if(!trackPickupETARequested && ride.driver_lat && ride.driver_lng && ride.pickup_lat && ride.pickup_lng && ride.status === 'aceptado'){
-      trackPickupETARequested = true;
+    // Mientras te viene a buscar: ruta APARTE (desde donde está el auto hasta tu origen), se pide una sola vez
+    if(trackMap && ride.status === 'aceptado' && ride.driver_lat && ride.driver_lng && !trackPickupRouteCoords && !trackPickupRouteFetching){
+      trackPickupRouteFetching = true;
       fetchRealRoute(ride.driver_lat, ride.driver_lng, ride.pickup_lat, ride.pickup_lng).then(route => {
-        if(route){ trackPickupETA = Math.round(route.minutes); updateETADisplay(ride); }
+        trackPickupRouteFetching = false;
+        if(route && trackMap){
+          trackPickupRouteCoords = route.coords;
+          trackPickupRouteLine = L.polyline(route.coords, { color:'#3ecf7e', weight:4, opacity:.85 }).addTo(trackMap);
+          trackPickupETA = Math.round(route.minutes);
+          updateETADisplay(ride);
+          if(trackMarkers.driver) trackDriverRouteIdx = nearestIndexOnRoute(trackPickupRouteCoords, ride.driver_lat, ride.driver_lng);
+        }
       });
     }
 
-    // El auto: se crea una vez y de ahí en más solo se MUEVE por la ruta real, nunca se recrea el mapa
+    // El auto: usa la ruta que corresponda según la etapa del viaje
     const followPhase = ride.status === 'aceptado' || ride.status === 'en_curso';
+    const activeRoute = ride.status === 'en_curso' ? trackDestRouteCoords : trackPickupRouteCoords;
+
     if(trackMap && ride.driver_lat && ride.driver_lng){
+      // Si recién pasamos a "en curso", el auto salta de la ruta vieja (hacia el origen) a la nueva (hacia el destino)
+      if(ride.status === 'en_curso' && trackActivePhase !== 'en_curso'){
+        trackActivePhase = 'en_curso';
+        if(trackPickupRouteLine){ trackMap.removeLayer(trackPickupRouteLine); trackPickupRouteLine = null; }
+        if(trackMarkers.driver && activeRoute) trackDriverRouteIdx = nearestIndexOnRoute(activeRoute, ride.driver_lat, ride.driver_lng);
+      } else if(ride.status === 'aceptado'){
+        trackActivePhase = 'aceptado';
+      }
+
       if(!trackMarkers.driver){
         trackMarkers.driver = L.marker([ride.driver_lat, ride.driver_lng], {icon:carIcon()}).addTo(trackMap);
-        if(trackRouteCoords) trackDriverRouteIdx = nearestIndexOnRoute(trackRouteCoords, ride.driver_lat, ride.driver_lng);
-      } else if(trackRouteCoords){
-        const newIdx = nearestIndexOnRoute(trackRouteCoords, ride.driver_lat, ride.driver_lng);
+        if(activeRoute) trackDriverRouteIdx = nearestIndexOnRoute(activeRoute, ride.driver_lat, ride.driver_lng);
+      } else if(activeRoute){
+        const newIdx = nearestIndexOnRoute(activeRoute, ride.driver_lat, ride.driver_lng);
         if(trackDriverRouteIdx === null) trackDriverRouteIdx = newIdx;
-        animateMarkerAlongRoute(trackMarkers.driver, trackRouteCoords, trackDriverRouteIdx, newIdx, 1400);
+        animateMarkerAlongRoute(trackMarkers.driver, activeRoute, trackDriverRouteIdx, newIdx, 1400);
         trackDriverRouteIdx = newIdx;
       } else {
         trackMarkers.driver.setLatLng([ride.driver_lat, ride.driver_lng]);
@@ -1938,7 +1979,7 @@
               ` : ''}
             </div>
           ` : ''}
-          <button class="btn secondary" id="openChatBtn">💬 Mensaje al conductor</button>
+          <button class="btn secondary" id="openChatBtn">${ICONS.chat} Mensaje al conductor</button>
         </div>
       `;
       const chatBtn = document.getElementById('openChatBtn');
@@ -2363,7 +2404,7 @@
   function spawnParticles(containerId, count){
     const layer = document.getElementById(containerId);
     if(!layer) return;
-    const colors = ['#d7b56d', '#4b7bff', '#f2f2ee'];
+    const colors = ['#d7b56d', '#5b5fee', '#f2f2ee'];
     layer.innerHTML = '';
     for(let i=0; i<count; i++){
       const p = document.createElement('div');
@@ -2581,9 +2622,9 @@
         </div>
       </div>
       <div class="quickActionsRow">
-        <div class="quickActionBtn" id="historyLinkDriver"><span class="qaIcon">📋</span>Tus viajes</div>
-        <div class="quickActionBtn" id="editProfileLink"><span class="qaIcon">👤</span>Ver perfil</div>
-        <div class="quickActionBtn" id="logoutDriver"><span class="qaIcon">🚪</span>Cambiar cuenta</div>
+        <div class="quickActionBtn" id="historyLinkDriver"><span class="qaIcon">${ICONS.history}</span>Tus viajes</div>
+        <div class="quickActionBtn" id="editProfileLink"><span class="qaIcon">${ICONS.profile}</span>Ver perfil</div>
+        <div class="quickActionBtn" id="logoutDriver"><span class="qaIcon">${ICONS.logout}</span>Cambiar cuenta</div>
       </div>
     `;
     document.getElementById('historyLinkDriver').onclick = () => renderTripHistory('conductor');
@@ -2794,7 +2835,9 @@
 
     if(session.activeRideId){
       driverActiveMap = null; driverActiveMarkers = { origin:null, dest:null, driver:null };
-      driverActiveRouteCoords = null; driverActiveRouteIdx = null; driverFollowActive = false;
+      driverActiveRouteIdx = null; driverFollowActive = false;
+      driverPickupRouteCoords = null; driverPickupRouteFetching = false; driverPickupRouteLine = null;
+      driverDestRouteCoords = null; driverDestRouteLine = null; driverActivePhase = null;
       driverActiveFullBounds = null; driverWasFollowing = false;
       el.innerHTML = `
         <div class="card rideCard">
@@ -2803,7 +2846,7 @@
           <div class="mapWrap"><div class="mapStatic" id="driverTrackMap" style="height:320px;"></div></div>
           <div id="driverRouteArea"></div>
           <div id="driverFeeArea"></div>
-          <button class="btn secondary" id="openChatBtnDriver" style="margin-top:10px;">💬 Mensaje al pasajero</button>
+          <button class="btn secondary" id="openChatBtnDriver" style="margin-top:10px;">${ICONS.chat} Mensaje al pasajero</button>
           <div id="driverActionArea"></div>
         </div>
       `;
@@ -2829,8 +2872,10 @@
     loadPendingRides();
   }
 
-  let driverActiveRouteCoords = null, driverActiveRouteIdx = null, driverFollowActive = false;
+  let driverActiveRouteIdx = null, driverFollowActive = false;
   let driverActiveFullBounds = null, driverWasFollowing = false;
+  let driverPickupRouteCoords = null, driverPickupRouteFetching = false, driverPickupRouteLine = null;
+  let driverDestRouteCoords = null, driverDestRouteLine = null, driverActivePhase = null;
 
   function updateDriverActiveMap(ride){
     const container = document.getElementById('driverTrackMap');
@@ -2841,14 +2886,14 @@
       driverActiveMarkers.origin = L.marker([ride.pickup_lat, ride.pickup_lng], {icon:pinIcon(false)}).addTo(driverActiveMap);
       if(ride.dropoff_lat && ride.dropoff_lng){
         driverActiveMarkers.dest = L.marker([ride.dropoff_lat, ride.dropoff_lng], {icon:pinIcon(true)}).addTo(driverActiveMap);
-        const straight = L.polyline([[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]], { color:'#4b7bff', weight:2, dashArray:'2 8', opacity:.6 }).addTo(driverActiveMap);
+        const straight = L.polyline([[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]], { color:'#5b5fee', weight:2, dashArray:'2 8', opacity:.6 }).addTo(driverActiveMap);
         driverActiveFullBounds = [[ride.pickup_lat,ride.pickup_lng],[ride.dropoff_lat,ride.dropoff_lng]];
         driverActiveMap.fitBounds(driverActiveFullBounds, {padding:[30,30]});
         fetchRealRoute(ride.pickup_lat, ride.pickup_lng, ride.dropoff_lat, ride.dropoff_lng).then(route => {
           if(route && driverActiveMap){
             driverActiveMap.removeLayer(straight);
-            L.polyline(route.coords, { color:'#4b7bff', weight:4, opacity:.85 }).addTo(driverActiveMap);
-            driverActiveRouteCoords = route.coords;
+            driverDestRouteLine = L.polyline(route.coords, { color:'#5b5fee', weight:4, opacity:.85 }).addTo(driverActiveMap);
+            driverDestRouteCoords = route.coords;
           }
         });
       } else {
@@ -2857,15 +2902,38 @@
       setTimeout(()=> driverActiveMap && driverActiveMap.invalidateSize(), 80);
     }
 
+    // Mientras va a buscarlo: ruta aparte, desde donde está el conductor hasta el origen del pasajero
+    if(driverActiveMap && ride.status === 'aceptado' && ride.driver_lat && ride.driver_lng && !driverPickupRouteCoords && !driverPickupRouteFetching){
+      driverPickupRouteFetching = true;
+      fetchRealRoute(ride.driver_lat, ride.driver_lng, ride.pickup_lat, ride.pickup_lng).then(route => {
+        driverPickupRouteFetching = false;
+        if(route && driverActiveMap){
+          driverPickupRouteCoords = route.coords;
+          driverPickupRouteLine = L.polyline(route.coords, { color:'#3ecf7e', weight:4, opacity:.85 }).addTo(driverActiveMap);
+          if(driverActiveMarkers.driver) driverActiveRouteIdx = nearestIndexOnRoute(driverPickupRouteCoords, ride.driver_lat, ride.driver_lng);
+        }
+      });
+    }
+
     const followPhase = ride.status === 'aceptado' || ride.status === 'en_curso';
+    const activeRoute = ride.status === 'en_curso' ? driverDestRouteCoords : driverPickupRouteCoords;
+
     if(driverActiveMap && ride.driver_lat && ride.driver_lng){
+      if(ride.status === 'en_curso' && driverActivePhase !== 'en_curso'){
+        driverActivePhase = 'en_curso';
+        if(driverPickupRouteLine){ driverActiveMap.removeLayer(driverPickupRouteLine); driverPickupRouteLine = null; }
+        if(driverActiveMarkers.driver && activeRoute) driverActiveRouteIdx = nearestIndexOnRoute(activeRoute, ride.driver_lat, ride.driver_lng);
+      } else if(ride.status === 'aceptado'){
+        driverActivePhase = 'aceptado';
+      }
+
       if(!driverActiveMarkers.driver){
         driverActiveMarkers.driver = L.marker([ride.driver_lat, ride.driver_lng], {icon:carIcon()}).addTo(driverActiveMap);
-        if(driverActiveRouteCoords) driverActiveRouteIdx = nearestIndexOnRoute(driverActiveRouteCoords, ride.driver_lat, ride.driver_lng);
-      } else if(driverActiveRouteCoords){
-        const newIdx = nearestIndexOnRoute(driverActiveRouteCoords, ride.driver_lat, ride.driver_lng);
+        if(activeRoute) driverActiveRouteIdx = nearestIndexOnRoute(activeRoute, ride.driver_lat, ride.driver_lng);
+      } else if(activeRoute){
+        const newIdx = nearestIndexOnRoute(activeRoute, ride.driver_lat, ride.driver_lng);
         if(driverActiveRouteIdx === null) driverActiveRouteIdx = newIdx;
-        animateMarkerAlongRoute(driverActiveMarkers.driver, driverActiveRouteCoords, driverActiveRouteIdx, newIdx, 1400);
+        animateMarkerAlongRoute(driverActiveMarkers.driver, activeRoute, driverActiveRouteIdx, newIdx, 1400);
         driverActiveRouteIdx = newIdx;
       } else {
         driverActiveMarkers.driver.setLatLng([ride.driver_lat, ride.driver_lng]);
