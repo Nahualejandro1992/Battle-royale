@@ -1170,8 +1170,12 @@
     const extraArea = document.getElementById('extraArea');
     if(!statusPillArea) return;
 
+    const isPrivatePending = ride.status === 'pendiente' && ride.is_private;
+
     const statusMeta = {
-      pendiente: { title:'Buscando conductor', sub:'Puede tardar unos minutos', pill:'Buscando' },
+      pendiente: isPrivatePending
+        ? { title:'Esperando respuesta de tu conductor', sub:'Le enviamos un aviso urgente, puede tardar unos segundos', pill:'Esperando respuesta' }
+        : { title:'Buscando conductor', sub:'Puede tardar unos minutos', pill:'Buscando' },
       aceptado:  { title:'¡Te aceptaron el viaje!', sub:'Tu conductor está en camino', pill:'Aceptado' },
       en_curso:  { title:'Viaje en curso', sub:'Vas camino a destino', pill:'En viaje' },
       completado:{ title:'Viaje terminado', sub:'Gracias por viajar con SordoGo', pill:'Completado' },
@@ -1233,6 +1237,35 @@
           el.innerHTML = summary ? ratingBadgeHtml(summary.avg, summary.count) : 'Todavía sin calificaciones';
         });
       }
+    } else if(isPrivatePending && ride.driver_id){
+      // Todavía no aceptó, pero como es pedido privado ya sabemos a quién le pedimos: lo mostramos igual
+      driverInfoArea.innerHTML = `<div class="card"><div class="empty">Cargando datos de tu conductor elegido...</div></div>`;
+      supa.from('drivers').select('*').eq('id', ride.driver_id).maybeSingle().then(({data:d}) => {
+        if(!d) return;
+        driverInfoArea.innerHTML = `
+          <div class="card" style="border-color:var(--gold-dim);">
+            <div class="who">
+              ${avatarHtml(d.name, d.photo_url)}
+              <div>
+                <div class="whoName">${escapeHtml(d.name)}</div>
+                <div id="driverRatingArea" style="margin:2px 0;font-size:12px;color:var(--text-faint);">cargando estrellas...</div>
+                <div class="carMeta">
+                  ${colorDot(d.color)}
+                  <span class="carMetaText">${escapeHtml(d.brand||'')} ${escapeHtml(d.model||'')}</span>
+                  ${plateBadge(d.plate, true)}
+                </div>
+              </div>
+            </div>
+            ${d.car_photo_url ? `<img src="${d.car_photo_url}" alt="Auto del conductor" style="width:100%;border-radius:12px;margin-bottom:12px;max-height:160px;object-fit:cover;">` : ''}
+            <div style="font-size:12px;color:var(--gold);text-align:center;">⏳ Esperando que confirme tu pedido...</div>
+          </div>
+        `;
+        getDriverRatingSummary(d.id).then(summary => {
+          const el = document.getElementById('driverRatingArea');
+          if(!el) return;
+          el.innerHTML = summary ? ratingBadgeHtml(summary.avg, summary.count) : 'Todavía sin calificaciones';
+        });
+      });
     } else {
       driverInfoArea.innerHTML = '';
     }
@@ -1240,8 +1273,8 @@
     extraArea.innerHTML = `
       ${ride.status === 'pendiente' ? `
         <div class="card" style="border-color:var(--accent-dim);">
-          <div style="font-size:12.5px;color:var(--text-dim);margin-bottom:10px;">🧪 Modo prueba: mientras no tengas otro conductor real probando, podés simular que uno te acepta y viene hasta el destino, para ver si el mapa y los estados andan bien.</div>
-          <button class="btn secondary" id="simulateBtn">Simular conductor de prueba</button>
+          <div style="font-size:12.5px;color:var(--text-dim);margin-bottom:10px;">🧪 Modo prueba: ${isPrivatePending ? 'simulá que tu conductor elegido confirma y viene hasta el destino' : 'simulá que un conductor te acepta y viene hasta el destino'}, para ver si el mapa y los estados andan bien.</div>
+          <button class="btn secondary" id="simulateBtn">${isPrivatePending ? 'Simular que confirma' : 'Simular conductor de prueba'}</button>
         </div>
       ` : ''}
       ${ride.status === 'completado' ? renderRatingBlock(ride) : ''}
