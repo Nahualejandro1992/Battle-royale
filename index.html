@@ -1024,24 +1024,41 @@
 
   // Desliza el marcador punto a punto por la ruta real (no en línea recta), con rotación
   function animateMarkerAlongRoute(marker, routeCoords, fromIdx, toIdx, totalMs){
+    // Cada llamada nueva "cancela" a la anterior (evita que dos animaciones peleen y el auto flashee/salte)
+    marker._animGen = (marker._animGen || 0) + 1;
+    const myGen = marker._animGen;
+
     if(fromIdx === toIdx){
       marker.setLatLng(routeCoords[toIdx]);
       return;
     }
     const step = toIdx > fromIdx ? 1 : -1;
-    const points = [];
+    let points = [];
     for(let i=fromIdx; i!==toIdx; i+=step) points.push(routeCoords[i]);
     points.push(routeCoords[toIdx]);
     if(points.length < 2){ marker.setLatLng(routeCoords[toIdx]); return; }
 
-    const segMs = Math.max(120, totalMs/(points.length-1));
+    // Si la ruta tiene muchísimos puntos entre una actualización y otra, la resumimos
+    // para que la animación no dure más que el tiempo real entre actualizaciones.
+    const MAX_POINTS = 10;
+    if(points.length > MAX_POINTS){
+      const sampled = [];
+      for(let i=0;i<MAX_POINTS;i++){
+        sampled.push(points[Math.round(i * (points.length-1) / (MAX_POINTS-1))]);
+      }
+      points = sampled;
+    }
+
+    const segMs = Math.max(90, totalMs/(points.length-1));
     let idx = 0;
     function nextSegment(){
+      if(marker._animGen !== myGen) return; // una actualización más nueva ya tomó el control
       if(idx >= points.length-1) return;
       const p1 = points[idx], p2 = points[idx+1];
       rotateMarkerIcon(marker, bearingBetween(p1[0],p1[1],p2[0],p2[1]));
       const start = performance.now();
       function frame(now){
+        if(marker._animGen !== myGen) return; // cancelada
         const t = Math.min(1, (now-start)/segMs);
         marker.setLatLng([p1[0]+(p2[0]-p1[0])*t, p1[1]+(p2[1]-p1[1])*t]);
         if(t < 1) requestAnimationFrame(frame);
@@ -2225,7 +2242,7 @@
         session.driverMpAlias = data.mp_alias;
         session.driverMpQrPhoto = data.mp_qr_photo_url;
         session.driverStatus = data.status; // respeta el estado real guardado, no fuerza "disponible"
-        if(data.status === 'disponible') startIdleLocationSharing();
+        if(data.status === 'disponible'){ startIdleLocationSharing(); setTimeout(checkWaitingRequestsOnConnect, 600); }
         rememberAccount('conductor', data.phone);
         vibrate(20);
         render();
@@ -2745,6 +2762,7 @@
     await supa.from('drivers').update({status:newStatus, updated_at:new Date().toISOString()}).eq('id', session.driverId);
     if(goOn) startIdleLocationSharing(); else stopIdleLocationSharing();
     render();
+    if(goOn) setTimeout(checkWaitingRequestsOnConnect, 400); // le da tiempo a que se renderice el panel primero
   }
 
   let driverActiveMap = null, driverActiveMarkers = { origin:null, dest:null, driver:null };
@@ -3055,6 +3073,40 @@
     if(ridesChannel){ supa.removeChannel(ridesChannel); ridesChannel = null; }
   }
 
+  let urgentQueue = [];
+  let urgentShowing = false;
+
+  function enqueueUrgent(ride, isPrivate){
+    if(session.activeRideId) return;
+    if(urgentQueue.some(u => u.ride.id === ride.id)) return; // ya está en la cola
+    urgentQueue.push({ ride, isPrivate });
+    tryShowNextUrgent();
+  }
+
+  function tryShowNextUrgent(){
+    if(urgentShowing) return;
+    if(session.activeRideId){ urgentQueue = []; return; }
+    if(urgentQueue.length === 0) return;
+    const next = urgentQueue.shift();
+    urgentShowing = true;
+    showUrgentRequestOverlay(next.ride, next.isPrivate, () => {
+      urgentShowing = false;
+      tryShowNextUrgent();
+    });
+  }
+
+  // Al conectarte, si ya había pedidos esperando, te avisa de una (no espera a que llegue uno nuevo)
+  async function checkWaitingRequestsOnConnect(){
+    if(!supa || session.driverStatus !== 'disponible') return;
+    const { data } = await supa.from('rides').select('*').eq('status','pendiente').order('created_at', {ascending:true});
+    if(!data) return;
+    data.forEach(ride => {
+      const isForMe = ride.driver_id === session.driverId;
+      const isOpenPool = !ride.driver_id;
+      if(isForMe || isOpenPool) enqueueUrgent(ride, isForMe);
+    });
+  }
+
   function subscribeToPendingRides(){
     if(driversChannel){ supa.removeChannel(driversChannel); driversChannel = null; }
     driversChannel = supa.channel('pending-rides')
@@ -3064,7 +3116,7 @@
         const isForMe = ride.driver_id === session.driverId; // pedido privado dirigido a mí
         const isOpenPool = !ride.driver_id && session.driverStatus === 'disponible'; // pedido abierto y estoy conectado
         if(isForMe || isOpenPool){
-          showUrgentRequestOverlay(ride, isForMe);
+          enqueueUrgent(ride, isForMe);
         }
       })
       .on('postgres_changes', { event:'*', schema:'public', table:'rides' }, () => {
@@ -3076,9 +3128,9 @@
   }
 
   // Aviso urgente pantalla completa para CUALQUIER pedido nuevo (privado o abierto) mientras estás conectado (como Uber)
-  function showUrgentRequestOverlay(ride, isPrivate){
-    if(session.activeRideId) return; // ya tiene un viaje activo, no lo interrumpo
-    if(session.driverStatus !== 'disponible' && !isPrivate) return; // si no está disponible, solo interrumpe si es privado directo
+  function showUrgentRequestOverlay(ride, isPrivate, onDone){
+    if(session.activeRideId){ if(onDone) onDone(); return; }
+    if(session.driverStatus !== 'disponible' && !isPrivate){ if(onDone) onDone(); return; }
     const existing = document.getElementById('urgentOverlay');
     if(existing) existing.remove();
 
@@ -3099,6 +3151,7 @@
           ${km ? `<div style="font-size:13px;color:var(--text-dim);">📏 ${km} km</div>` : ''}
           ${ride.estimated_fare ? `<div style="font-size:15px;font-weight:700;">${money(ride.estimated_fare)}</div>` : ''}
         </div>
+        ${urgentQueue.length > 0 ? `<div style="font-size:11px;color:var(--text-faint);margin-top:10px;">+${urgentQueue.length} pedido${urgentQueue.length===1?'':'s'} más esperando</div>` : ''}
         <div style="display:flex;gap:10px;margin-top:20px;">
           <button class="btn danger" id="declineUrgent" style="flex:1;">Rechazar</button>
           <button class="btn success" id="acceptUrgent" style="flex:1;">Aceptar</button>
@@ -3121,17 +3174,21 @@
       if(secondsLeft <= 0){
         clearInterval(countdown);
         overlay.remove();
+        if(onDone) onDone();
       }
     }, 1000);
 
     document.getElementById('declineUrgent').onclick = () => {
       clearInterval(countdown);
       overlay.remove();
+      if(onDone) onDone();
     };
     document.getElementById('acceptUrgent').onclick = async () => {
       clearInterval(countdown);
       overlay.remove();
+      urgentQueue = []; // ya aceptó uno, los demás quedan disponibles para otros conductores
       await acceptRide(ride.id);
+      if(onDone) onDone();
     };
   }
 
@@ -3163,7 +3220,7 @@
         session.driverMpAlias = data.mp_alias;
         session.driverMpQrPhoto = data.mp_qr_photo_url;
         session.driverStatus = data.status;
-        if(data.status === 'disponible') startIdleLocationSharing();
+        if(data.status === 'disponible'){ startIdleLocationSharing(); setTimeout(checkWaitingRequestsOnConnect, 600); }
         return render();
       }
     } else if(remembered && remembered.role === 'pasajero'){
