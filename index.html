@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multivoz — Prototipo</title>
+<style>
+  :root{
+    --bg:#160a29;
+    --bg2:#1f0f3d;
+    --magenta:#ff2ec4;
+    --cyan:#00e5ff;
+    --line:rgba(255,255,255,0.08);
+    --text:#f1e9ff;
+    --muted:#a692c9;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.02) 0 1px, transparent 1px 40px),
+      linear-gradient(160deg, var(--bg) 0%, var(--bg2) 100%);
+    min-height:100vh;
+    font-family:'Segoe UI', system-ui, sans-serif;
+    color:var(--text);
+    padding:20px;
+  }
+  .wrap{max-width:640px; margin:0 auto;}
+
+  header{text-align:center; margin-bottom:20px;}
+  .logo{
+    display:inline-block;
+    font-weight:800;
+    font-size:14px;
+    letter-spacing:3px;
+    padding:6px 16px;
+    border-radius:999px;
+    background:linear-gradient(90deg, var(--magenta), var(--cyan));
+    color:#0a0415;
+    margin-bottom:10px;
+  }
+  h1{font-size:22px; font-weight:700;}
+  .sub{color:var(--muted); font-size:13px; margin-top:4px;}
+
+  .card{
+    background:rgba(255,255,255,0.03);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:16px;
+    margin-bottom:16px;
+  }
+  .card h2{font-size:13px; text-transform:uppercase; letter-spacing:2px; color:var(--muted); margin-bottom:12px;}
+
+  .notice{
+    font-size:13px; line-height:1.5; color:var(--muted);
+    border-left:2px solid var(--magenta); padding-left:10px;
+  }
+
+  .mode-toggle{display:flex; gap:8px; margin-bottom:4px;}
+  .mode-btn{
+    flex:1; padding:10px; border-radius:10px; border:1px solid var(--line);
+    background:transparent; color:var(--muted); font-size:13px; cursor:pointer;
+    transition:.2s;
+  }
+  .mode-btn.active{
+    border-color:var(--cyan); color:#0a0415;
+    background:linear-gradient(90deg, var(--cyan), var(--magenta));
+    font-weight:700;
+  }
+
+  .speakers{display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;}
+  .speaker-chip{
+    display:flex; align-items:center; gap:8px;
+    padding:8px 12px; border-radius:999px;
+    border:2px solid var(--chip-color, var(--cyan));
+    background:rgba(255,255,255,0.03);
+    cursor:pointer; font-size:13px; color:var(--text);
+    transition:.15s;
+  }
+  .speaker-chip.active{
+    background:var(--chip-color, var(--cyan));
+    color:#0a0415; font-weight:700;
+    box-shadow:0 0 16px var(--chip-color, var(--cyan));
+  }
+  .dot{width:9px; height:9px; border-radius:50%; background:var(--chip-color, var(--cyan));}
+  .add-speaker{
+    display:flex; gap:8px; margin-top:12px;
+  }
+  .add-speaker input{
+    flex:1; padding:8px 10px; border-radius:8px; border:1px solid var(--line);
+    background:rgba(0,0,0,0.2); color:var(--text); font-size:13px;
+  }
+  .add-speaker button{
+    padding:8px 14px; border-radius:8px; border:none;
+    background:var(--cyan); color:#0a0415; font-weight:700; cursor:pointer; font-size:13px;
+  }
+
+  .rec-controls{display:flex; gap:10px; align-items:center; justify-content:center; margin-top:6px;}
+  .rec-btn{
+    width:64px; height:64px; border-radius:50%; border:none; cursor:pointer;
+    background:radial-gradient(circle at 35% 30%, #ff5fd8, var(--magenta));
+    box-shadow:0 0 24px rgba(255,46,196,0.6);
+    color:#fff; font-size:22px;
+  }
+  .rec-btn.recording{
+    animation: siren 1s infinite;
+  }
+  @keyframes siren{
+    0%,100%{box-shadow:0 0 24px rgba(255,46,196,0.8);}
+    50%{box-shadow:0 0 24px rgba(0,229,255,0.8);}
+  }
+  .rec-status{font-size:12px; color:var(--muted); text-align:center; margin-top:8px;}
+
+  .transcript{
+    max-height:320px; overflow-y:auto;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .line{
+    padding:10px 12px; border-radius:10px;
+    background:rgba(255,255,255,0.04);
+    border-left:3px solid var(--line-color, var(--cyan));
+  }
+  .line .meta{font-size:11px; color:var(--line-color, var(--cyan)); font-weight:700; margin-bottom:3px;}
+  .line .txt{font-size:15px; line-height:1.4;}
+  .interim{opacity:0.5; font-style:italic;}
+  .empty{color:var(--muted); font-size:13px; text-align:center; padding:20px;}
+
+  .clips{display:flex; flex-direction:column; gap:10px; margin-top:10px;}
+  .clip{
+    display:flex; align-items:center; gap:10px;
+    background:rgba(255,255,255,0.03); border-radius:10px; padding:8px 10px;
+    border-left:3px solid var(--clip-color, var(--cyan));
+  }
+  .clip .name{font-size:12px; font-weight:700; min-width:70px; color:var(--clip-color, var(--cyan));}
+  .clip audio{flex:1; height:32px;}
+  .clip a{font-size:11px; color:var(--muted); text-decoration:none; border:1px solid var(--line); padding:4px 8px; border-radius:6px;}
+
+  .status-bar{font-size:12px; color:var(--muted); text-align:center; margin-top:14px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">SA · MULTIVOZ</div>
+    <h1>Traductor de conversaciones grupales</h1>
+    <div class="sub">Prototipo de prueba — Sordos Argentinos</div>
+  </header>
+
+  <div class="card">
+    <p class="notice">
+      El reconocimiento de voz del navegador no puede detectar solo quién habla:
+      si dos personas hablan al mismo tiempo, el texto se mezcla igual.
+      Por eso: en modo <strong>Individual</strong> vos tocás el nombre de quien
+      está hablando en ese momento, y el sistema separa texto y audio por persona.
+      En modo <strong>Mezclado</strong> no se separa nada — sirve para probar cómo
+      se ve una conversación grupal sin marcar hablantes.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Modo</h2>
+    <div class="mode-toggle">
+      <button class="mode-btn active" data-mode="individual">Individual (por turnos)</button>
+      <button class="mode-btn" data-mode="mezclado">Mezclado (todos juntos)</button>
+    </div>
+
+    <div id="speakerSection">
+      <h2 style="margin-top:16px;">Personas</h2>
+      <div class="speakers" id="speakerList"></div>
+      <div class="add-speaker">
+        <input id="newSpeakerName" placeholder="Nombre de la persona" maxlength="16">
+        <button id="addSpeakerBtn">Agregar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Grabación</h2>
+    <div class="rec-controls">
+      <button class="rec-btn" id="recBtn">●</button>
+    </div>
+    <div class="rec-status" id="recStatus">Tocá para empezar a escuchar y grabar</div>
+  </div>
+
+  <div class="card">
+    <h2>Transcripción en vivo</h2>
+    <div class="transcript" id="transcript">
+      <div class="empty">Acá va apareciendo el texto de lo que se habla.</div>
+    </div>
+  </div>
+
+  <div class="card" id="clipsCard" style="display:none;">
+    <h2>Clips grabados</h2>
+    <div class="clips" id="clipsList"></div>
+  </div>
+
+  <div class="status-bar" id="globalStatus"></div>
+
+</div>
+
+<script>
+const PALETTE = ['#ff2ec4','#00e5ff','#ffd23f','#7cff6b','#ff7a3d','#c084ff'];
+let speakers = [
+  {id:1, name:'Persona 1', color:PALETTE[0]},
+  {id:2, name:'Persona 2', color:PALETTE[1]},
+];
+let nextId = 3;
+let mode = 'individual';
+let activeSpeakerId = speakers[0].id;
+
+let recognition = null;
+let listening = false;
+let stream = null;
+let currentRecorder = null;
+let currentChunks = [];
+let mixedRecorder = null;
+let mixedChunks = [];
+let clips = []; // {speakerId, url, blob}
+
+const speakerListEl = document.getElementById('speakerList');
+const transcriptEl = document.getElementById('transcript');
+const recBtn = document.getElementById('recBtn');
+const recStatus = document.getElementById('recStatus');
+const globalStatus = document.getElementById('globalStatus');
+const clipsCard = document.getElementById('clipsCard');
+const clipsList = document.getElementById('clipsList');
+const speakerSection = document.getElementById('speakerSection');
+
+function speakerById(id){ return speakers.find(s=>s.id===id); }
+
+function renderSpeakers(){
+  speakerListEl.innerHTML = '';
+  speakers.forEach(sp=>{
+    const chip = document.createElement('div');
+    chip.className = 'speaker-chip' + (sp.id===activeSpeakerId && mode==='individual' ? ' active':'');
+    chip.style.setProperty('--chip-color', sp.color);
+    chip.innerHTML = `<span class="dot"></span>${sp.name}`;
+    chip.onclick = ()=> selectSpeaker(sp.id);
+    speakerListEl.appendChild(chip);
+  });
+}
+
+function selectSpeaker(id){
+  if(mode!=='individual') return;
+  if(id === activeSpeakerId) return;
+  activeSpeakerId = id;
+  renderSpeakers();
+  if(listening){
+    // cerrar clip anterior y arrancar uno nuevo para la nueva persona
+    restartPerSpeakerRecorder();
+  }
+}
+
+document.getElementById('addSpeakerBtn').onclick = ()=>{
+  const input = document.getElementById('newSpeakerName');
+  const name = input.value.trim();
+  if(!name) return;
+  const color = PALETTE[(speakers.length) % PALETTE.length];
+  speakers.push({id:nextId, name, color});
+  nextId++;
+  input.value = '';
+  renderSpeakers();
+};
+
+document.querySelectorAll('.mode-btn').forEach(btn=>{
+  btn.onclick = ()=>{
+    document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    mode = btn.dataset.mode;
+    speakerSection.style.opacity = mode==='individual' ? '1' : '0.4';
+    speakerSection.style.pointerEvents = mode==='individual' ? 'auto' : 'none';
+    renderSpeakers();
+  };
+});
+
+function addTranscriptLine(text, speaker, isFinal){
+  if(!isFinal){
+    let interim = document.getElementById('interimLine');
+    if(!interim){
+      interim = document.createElement('div');
+      interim.className = 'line interim';
+      interim.id = 'interimLine';
+      interim.style.setProperty('--line-color', speaker ? speaker.color : 'var(--cyan)');
+      interim.innerHTML = `<div class="meta">${speaker ? speaker.name : 'Todos'}</div><div class="txt"></div>`;
+      transcriptEl.appendChild(interim);
+    }
+    interim.querySelector('.txt').textContent = text;
+    transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    return;
+  }
+  const old = document.getElementById('interimLine');
+  if(old) old.remove();
+  const empty = transcriptEl.querySelector('.empty');
+  if(empty) empty.remove();
+
+  const line = document.createElement('div');
+  line.className = 'line';
+  line.style.setProperty('--line-color', speaker ? speaker.color : 'var(--cyan)');
+  const time = new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  line.innerHTML = `<div class="meta">${speaker ? speaker.name : 'Todos'} · ${time}</div><div class="txt">${text}</div>`;
+  transcriptEl.appendChild(line);
+  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+}
+
+function setupRecognition(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){
+    globalStatus.textContent = 'Este navegador no soporta reconocimiento de voz. Probá con Chrome o Edge.';
+    recBtn.disabled = true;
+    return null;
+  }
+  const rec = new SR();
+  rec.lang = 'es-AR';
+  rec.continuous = true;
+  rec.interimResults = true;
+
+  rec.onresult = (e)=>{
+    let interim = '';
+    for(let i = e.resultIndex; i < e.results.length; i++){
+      const res = e.results[i];
+      const sp = mode==='individual' ? speakerById(activeSpeakerId) : null;
+      if(res.isFinal){
+        addTranscriptLine(res[0].transcript.trim(), sp, true);
+      } else {
+        interim += res[0].transcript;
+      }
+    }
+    if(interim){
+      const sp = mode==='individual' ? speakerById(activeSpeakerId) : null;
+      addTranscriptLine(interim, sp, false);
+    }
+  };
+
+  rec.onerror = (e)=>{
+    globalStatus.textContent = 'Error de reconocimiento: ' + e.error;
+  };
+
+  rec.onend = ()=>{
+    if(listening){ rec.start(); } // reiniciar solo si seguimos escuchando
+  };
+
+  return rec;
+}
+
+async function startListening(){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({audio:true});
+  }catch(err){
+    globalStatus.textContent = 'No se pudo acceder al micrófono. Revisá los permisos.';
+    return;
+  }
+
+  recognition = setupRecognition();
+  if(!recognition) return;
+
+  listening = true;
+  recognition.start();
+
+  // grabación mezclada (siempre corre en paralelo)
+  mixedChunks = [];
+  mixedRecorder = new MediaRecorder(stream);
+  mixedRecorder.ondataavailable = e=> mixedChunks.push(e.data);
+  mixedRecorder.start();
+
+  if(mode==='individual'){
+    startPerSpeakerRecorder();
+  }
+
+  recBtn.classList.add('recording');
+  recBtn.textContent = '■';
+  recStatus.textContent = mode==='individual'
+    ? `Escuchando y grabando · hablando: ${speakerById(activeSpeakerId).name}`
+    : 'Escuchando y grabando (mezclado)';
+  globalStatus.textContent = '';
+}
+
+function startPerSpeakerRecorder(){
+  if(!stream) return;
+  currentChunks = [];
+  currentRecorder = new MediaRecorder(stream);
+  currentRecorder.ondataavailable = e=> currentChunks.push(e.data);
+  currentRecorder.start();
+}
+
+function restartPerSpeakerRecorder(){
+  if(currentRecorder && currentRecorder.state !== 'inactive'){
+    const closingSpeakerId = activeSpeakerId; // se actualiza antes de llamar esto, así que guardamos el anterior fuera
+  }
+}
+
+// versión corregida: necesitamos el id anterior antes de cambiarlo
+function selectSpeakerFixed(){}
+
+function stopCurrentClip(speakerIdForClip){
+  return new Promise(resolve=>{
+    if(!currentRecorder || currentRecorder.state==='inactive'){ resolve(); return; }
+    currentRecorder.onstop = ()=>{
+      if(currentChunks.length){
+        const blob = new Blob(currentChunks, {type:'audio/webm'});
+        const url = URL.createObjectURL(blob);
+        clips.push({speakerId: speakerIdForClip, url});
+        renderClips();
+      }
+      resolve();
+    };
+    currentRecorder.stop();
+  });
+}
+
+function stopListening(){
+  listening = false;
+  if(recognition) recognition.stop();
+  if(mixedRecorder && mixedRecorder.state!=='inactive'){
+    mixedRecorder.onstop = ()=>{
+      if(mixedChunks.length){
+        const blob = new Blob(mixedChunks, {type:'audio/webm'});
+        const url = URL.createObjectURL(blob);
+        clips.push({speakerId:'mix', url});
+        renderClips();
+      }
+    };
+    mixedRecorder.stop();
+  }
+  if(currentRecorder && currentRecorder.state!=='inactive'){
+    stopCurrentClip(activeSpeakerId);
+  }
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); }
+
+  recBtn.classList.remove('recording');
+  recBtn.textContent = '●';
+  recStatus.textContent = 'Tocá para empezar a escuchar y grabar';
+}
+
+function renderClips(){
+  clipsCard.style.display = clips.length ? 'block' : 'none';
+  clipsList.innerHTML = '';
+  clips.forEach((c, i)=>{
+    const isMix = c.speakerId === 'mix';
+    const sp = isMix ? null : speakerById(c.speakerId);
+    const color = isMix ? '#ffffff' : (sp ? sp.color : '#00e5ff');
+    const name = isMix ? 'Mezclado' : (sp ? sp.name : 'Persona');
+    const div = document.createElement('div');
+    div.className = 'clip';
+    div.style.setProperty('--clip-color', color);
+    div.innerHTML = `
+      <div class="name">${name}</div>
+      <audio controls src="${c.url}"></audio>
+      <a href="${c.url}" download="clip_${name.replace(/\s+/g,'_')}_${i}.webm">Descargar</a>
+    `;
+    clipsList.appendChild(div);
+  });
+}
+
+recBtn.onclick = ()=>{
+  if(!listening) startListening();
+  else stopListening();
+};
+
+// arreglo del cambio de hablante: envolvemos selectSpeaker para manejar el recorder correctamente
+const _origSelectSpeaker = selectSpeaker;
+window.selectSpeaker = async function(id){
+  if(mode!=='individual' || id===activeSpeakerId) return;
+  const previousId = activeSpeakerId;
+  activeSpeakerId = id;
+  renderSpeakers();
+  recStatus.textContent = `Escuchando y grabando · hablando: ${speakerById(id).name}`;
+  if(listening){
+    await stopCurrentClip(previousId);
+    startPerSpeakerRecorder();
+  }
+};
+
+renderSpeakers();
+</script>
+</body>
+</html>
